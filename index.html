@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Theo dõi tiến độ phát triển trạm biến áp khách hàng - Điện lực Vũng Tàu">
+  <meta name="theme-color" content="#1a2e5a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Tiến Độ TBA KH — PC Vũng Tàu</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="logo.png">
+</head>
+<body>
+
+  <!-- TOAST -->
+  <div class="toast-container" id="toastContainer"></div>
+  <div class="refresh-bar" id="refreshBar"></div>
+
+  <!-- ==================== LOGIN ==================== -->
+  <div id="loginPage" class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="logo.png" alt="EVN HCMC Logo">
+      </div>
+      <h1 class="login-title">Tiến Độ TBA Khách Hàng</h1>
+      <p class="login-subtitle">Điện lực Vũng Tàu — Phát triển trạm khách hàng</p>
+
+      <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label" for="loginUsername">Phòng / Đội</label>
+          <select class="form-select" id="loginUsername" required>
+            <option value="">— Chọn phòng / đội —</option>
+            <option value="ktat">Phòng Kỹ thuật & An toàn (KTAT)</option>
+            <option value="dvkh">Đội Dịch vụ Khách hàng (DVKH)</option>
+            <option value="qlhtdd">Đội Quản lý HT Đo đếm (QLHTĐĐ)</option>
+            <option value="vhld">Đội Vận hành Lưới điện (VHLĐ)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Mật khẩu</label>
+          <input class="form-input" type="password" id="loginPassword" placeholder="Nhập mật khẩu..." required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Đăng nhập</button>
+        <div class="login-error" id="loginError"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== APP ==================== -->
+  <div id="appPage" class="app-container hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-logo"><img src="logo.png" alt="Logo"></div>
+        <div class="topbar-title">TBA KH <span>PC Vũng Tàu</span></div>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="themeToggle" title="Đổi giao diện">🌙</button>
+        <div class="user-chip">
+          <div class="user-chip-avatar" id="userAvatar">K</div>
+          <span class="user-chip-name" id="userName">KTAT</span>
+        </div>
+        <button class="btn-logout" id="logoutBtn">Thoát</button>
+      </div>
+    </header>
+
+    <main class="main-content" id="mainContent">
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Đang tải dữ liệu...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================== MODAL THÊM TRẠM ==================== -->
+  <div class="modal-overlay hidden" id="addStationModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Thêm trạm mới</h3>
+        <button class="modal-close" id="closeModalBtn">✕</button>
+      </div>
+      <form id="addStationForm">
+        <div class="form-group">
+          <label class="form-label">Tên công trình *</label>
+          <input class="form-input" type="text" id="newName" placeholder="VD: TBA 560kVA - Công ty ABC" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Địa chỉ</label>
+          <input class="form-input" type="text" id="newAddress" placeholder="VD: KCN Phú Mỹ 1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">KVA</label>
+          <input class="form-input" type="text" id="newKVA" placeholder="VD: 560">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Liên hệ</label>
+          <input class="form-input" type="text" id="newContact" placeholder="SĐT liên hệ">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Xây lắp</label>
+          <input class="form-input" type="text" id="newXayLap" placeholder="Đơn vị xây lắp">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ngày đề nghị</label>
+          <input class="form-input" type="date" id="newDeNghi">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" id="cancelModalBtn">Hủy</button>
+          <button type="submit" class="btn btn-success" id="submitStationBtn">✓ Thêm trạm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

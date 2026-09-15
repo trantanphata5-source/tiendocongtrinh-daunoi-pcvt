@@ -1,0 +1,9 @@
+# Ignore test files
+test_jsonp.html
+
+# Excel data
+*.xlsx
+
+# OS
+Thumbs.db
+.DS_Store
