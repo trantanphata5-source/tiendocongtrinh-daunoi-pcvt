@@ -171,14 +171,26 @@ async function fetchStations() {
 }
 
 // ============================================================================
-// API
+// API (with optimistic local update to avoid stale cache)
 // ============================================================================
+const COL_KEY_MAP = { 7: 'deNghi', 8: 'tntkSoCV', 9: 'tntkNgay', 11: 'hopDong', 12: 'doDem', 13: 'dongDien' };
+
+function updateLocalStation(row, column, value) {
+  const s = allStations.find(x => x.row === row);
+  if (s && COL_KEY_MAP[column]) s[COL_KEY_MAP[column]] = value;
+}
+
 async function apiUpdate(row, column, value, role) {
   if (!isGASAvailable) { toast('Chưa deploy API. Vui lòng deploy Google Apps Script.', 'error'); return false; }
   try {
     const r = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'update_date', row, column, value, role }) });
     const d = await r.json();
-    if (d.status === 'success') { toast(d.message || 'Cập nhật thành công!', 'success'); return true; }
+    if (d.status === 'success') {
+      // Cập nhật dữ liệu local ngay lập tức (optimistic update)
+      updateLocalStation(row, column, value);
+      toast(d.message || 'Cập nhật thành công!', 'success');
+      return true;
+    }
     toast(d.message || 'Lỗi', 'error'); return false;
   } catch (e) { toast('Lỗi: ' + e.message, 'error'); return false; }
 }
@@ -188,7 +200,20 @@ async function apiAddStation(data) {
   try {
     const r = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'add_station', ...data, role: currentUser.role }) });
     const d = await r.json();
-    if (d.status === 'success') { toast(d.message || 'Thêm thành công!', 'success'); return true; }
+    if (d.status === 'success') {
+      // Thêm trạm mới vào dữ liệu local ngay lập tức
+      allStations.push({
+        row: d.row || (allStations.length + 2),
+        stt: d.stt || String(allStations.length + 1),
+        name: data.name || '', address: data.address || '',
+        contact: data.contact || '', xayLap: data.xayLap || '',
+        kva: data.kva || '', deNghi: data.deNghi || '',
+        tntkSoCV: '', tntkNgay: '', ttdn: '',
+        hopDong: '', doDem: '', dongDien: ''
+      });
+      toast(d.message || 'Thêm thành công!', 'success');
+      return true;
+    }
     toast(d.message || 'Lỗi', 'error'); return false;
   } catch (e) { toast('Lỗi: ' + e.message, 'error'); return false; }
 }
@@ -526,6 +551,7 @@ function renderTimeline(s, states, highlightStepIdx) {
           const dateInfo = getStepDate(s, i);
           const canEdit = currentUser.role === 'ktat' && (step.col === 7 || step.col === 9);
           const isHighlighted = highlightStepIdx !== undefined && i === highlightStepIdx;
+          const isTNTK = (i === 1); // Bước Chấp thuận thiết kế
 
           return `
             <div class="tree-node ${state} ${isHighlighted ? 'highlight-owner' : ''}">
@@ -535,8 +561,15 @@ function renderTimeline(s, states, highlightStepIdx) {
                 <div class="tree-owner">${step.owner}</div>
                 ${dateInfo.date ? `
                   <div class="tree-date">${dateInfo.date} ${dateInfo.isDefault ? '<span class="tree-date-note">(ngày mặc định)</span>' : ''}</div>
+                  ${isTNTK && s.tntkSoCV ? `<div class="tree-socv">📄 Số CV: <strong>${esc(s.tntkSoCV)}</strong></div>` : ''}
                 ` : (state === 'active' && canEdit) ? `
                   <div class="tree-date-input">
+                    ${isTNTK ? `
+                      <div class="tree-socv-row">
+                        <label class="tree-input-label">Số văn bản:</label>
+                        <input type="text" placeholder="VD: 4734" class="socv-input form-input" data-row="${s.row}" data-col="8" value="${esc(s.tntkSoCV || '')}">
+                      </div>
+                    ` : ''}
                     <div class="tree-date-row">
                       <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
                       <button type="button" class="btn-today-shortcut" title="Chọn hôm nay">⚡ Hôm nay</button>
@@ -647,14 +680,28 @@ function bindTimelineSaveButtons(container) {
       e.stopPropagation();
       const row = parseInt(btn.dataset.row);
       const col = parseInt(btn.dataset.col);
-      const inp = btn.parentElement.querySelector('input[type="date"]');
+      const dateContainer = btn.parentElement;
+      const inp = dateContainer.querySelector('input[type="date"]');
       if (!inp) return;
       const val = inputToSheet(inp.value);
       if (!val) { toast('Chọn ngày', 'error'); return; }
-      btn.textContent = '...'; btn.disabled = true;
+      btn.textContent = '⏳ Đang lưu...'; btn.disabled = true;
+
+      // Nếu là bước TNTK (col=9), kiểm tra có ô Số CV không → lưu cùng lúc
+      const socvInp = dateContainer.querySelector('.socv-input');
+      if (socvInp && socvInp.value.trim()) {
+        await apiUpdate(row, 8, socvInp.value.trim(), currentUser.role);
+      }
+
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) { expandedId = row; await loadAndRender(); }
-      else { btn.textContent = 'Lưu'; btn.disabled = false; }
+      if (ok) {
+        expandedId = row;
+        progExpandedId = row;
+        render(); // Render ngay với dữ liệu local đã cập nhật
+        setTimeout(silentRefresh, 4000); // Đồng bộ nền sau 4s
+      } else {
+        btn.textContent = 'Lưu'; btn.disabled = false;
+      }
     });
   });
 }
@@ -1014,7 +1061,7 @@ function bindTeamEvents(step) {
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '⏳ Đang lưu...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) await loadAndRender();
+      if (ok) { render(); setTimeout(silentRefresh, 4000); }
       else { btn.textContent = '✓ Cập nhật ngày'; btn.disabled = false; }
     });
   });
@@ -1054,7 +1101,7 @@ function bindTeamEvents(step) {
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) await loadAndRender();
+      if (ok) { render(); setTimeout(silentRefresh, 4000); }
       else { btn.textContent = 'Lưu'; btn.disabled = false; }
     });
   });
@@ -1107,7 +1154,8 @@ function handleAddStation(e) {
     if (ok) {
       closeAddStationModal();
       $('#addStationForm').reset();
-      loadAndRender();
+      render();
+      setTimeout(silentRefresh, 4000);
     }
   });
 }
