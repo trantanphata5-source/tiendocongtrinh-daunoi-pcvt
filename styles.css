@@ -420,22 +420,364 @@ h1,h2,h3,h4{font-weight:700;letter-spacing:-0.01em}
 /* ============================================================================
    TEAM DASHBOARD
    ============================================================================ */
-.tab-nav{display:flex;gap:4px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:3px;margin-bottom:12px;width:100%}
-.tab-btn{flex:1;padding:8px 6px;background:transparent;border:none;border-radius:var(--r-sm);color:var(--text-secondary);font-family:var(--font-sans);font-size:0.78rem;font-weight:600;cursor:pointer;transition:all var(--t-fast);text-align:center}
-.tab-btn:hover{color:var(--text-primary);background:var(--bg-card-hover)}
-.tab-btn.active{background:var(--primary);color:#fff}
+/* Legacy fallback stats-row */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.stat-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px 10px;text-align:center;transition:all var(--t-base)}
+.stat-item:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.stat-num{font-size:1.5rem;font-weight:800;line-height:1.2}
+.stat-num.c-total{color:var(--primary)}
+.stat-num.c-done{color:var(--success)}
+.stat-num.c-notdone{color:var(--warning)}
+.stat-label{font-size:0.68rem;color:var(--text-secondary);font-weight:600;margin-top:2px}
 
-.job-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px;transition:all var(--t-base)}
-.job-card:hover{box-shadow:var(--shadow-md)}
-.job-card+.job-card{margin-top:6px}
-.job-card.pending-card{border-left:3px solid var(--warning)}
-.job-card.done-card{border-left:3px solid var(--success);opacity:0.8}
-.job-title{font-size:0.85rem;font-weight:700;margin-bottom:4px}
-.job-meta{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}
-.job-meta-row{font-size:0.75rem;color:var(--text-secondary);display:flex;align-items:center;gap:4px}
-.job-actions{display:flex;gap:6px;align-items:center}
-.job-actions input[type="date"]{flex:1;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text-primary);font-family:var(--font-sans);font-size:0.8rem;outline:none}
-.job-done-badge{display:flex;align-items:center;gap:4px;padding:6px 10px;background:var(--success-bg);border-radius:var(--r-sm);font-size:0.78rem;color:var(--success);font-weight:600}
+/* Team Hero Card */
+.team-hero-card{
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--t-base);
+  position: relative;
+  overflow: hidden;
+}
+.team-hero-card:hover{
+  box-shadow: var(--shadow-md);
+}
+.team-hero-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.team-hero-info{
+  flex: 1;
+  min-width: 0;
+}
+.team-role-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.team-role-badge .role-dot{
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.role-ktat{background:rgba(37,99,235,0.1);color:var(--primary);border:1px solid rgba(37,99,235,0.25)}
+.role-dvkh{background:rgba(217,119,6,0.1);color:var(--warning);border:1px solid rgba(217,119,6,0.25)}
+.role-qlhtdd{background:rgba(2,132,199,0.1);color:var(--info);border:1px solid rgba(2,132,199,0.25)}
+.role-vhld{background:rgba(22,163,74,0.1);color:var(--success);border:1px solid rgba(22,163,74,0.25)}
+
+.team-hero-title{
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+.team-hero-desc{
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.team-pct-pill{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 8px 16px;
+  flex-shrink: 0;
+}
+.team-pct-num{
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--success);
+  line-height: 1.1;
+}
+.team-pct-label{
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.team-progress-bar-wrap{
+  background: var(--bg-input);
+  height: 6px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  margin: 14px 0 16px;
+  border: 1px solid var(--border-light);
+}
+.team-progress-bar{
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--success));
+  border-radius: var(--r-full);
+  transition: width 0.6s ease-out;
+}
+
+/* Team Stats Grid */
+.team-stats-grid{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.team-stat-box{
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all var(--t-fast);
+}
+.team-stat-box:hover{
+  transform: translateY(-1px);
+  background: var(--bg-card-hover);
+}
+.team-stat-icon{
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.team-stat-data{
+  flex: 1;
+  min-width: 0;
+}
+.team-stat-num{
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+.team-stat-label{
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.box-total .team-stat-num{color: var(--primary)}
+.box-pending .team-stat-num{color: var(--warning)}
+.box-done .team-stat-num{color: var(--success)}
+.box-pending.has-pending{
+  border-color: rgba(217,119,6,0.3);
+  background: rgba(217,119,6,0.04);
+}
+
+/* Tab styling overrides for team */
+.tab-pending.active{
+  background: var(--warning) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(217,119,6,0.3);
+}
+.tab-done.active{
+  background: var(--success) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(22,163,74,0.3);
+}
+
+/* Job Cards List */
+.job-list{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-card{
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  transition: all var(--t-fast);
+  box-shadow: var(--shadow-sm);
+}
+.job-card:hover{
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-focus);
+}
+.job-card.pending-card{
+  border-left: 4px solid var(--warning);
+}
+.job-card.done-card{
+  border-left: 4px solid var(--success);
+}
+.job-card-header{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.job-stt{
+  width: 28px;
+  height: 28px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.job-title-box{
+  flex: 1;
+  min-width: 0;
+}
+.job-title{
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.job-meta{
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 12px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.job-meta-item{
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.job-status-badge{
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--r-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.badge-pending{
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid var(--warning-border);
+}
+
+.job-prev-step{
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--border);
+}
+.prev-step-icon{
+  color: var(--text-muted);
+  font-weight: bold;
+}
+.job-prev-step .prev-date{
+  color: var(--primary);
+}
+
+.job-actions-panel{
+  border-top: 1px solid var(--border-light);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.job-update-form{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.job-input-label{
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.job-input-group{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.job-date-input{
+  padding: 7px 10px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--t-fast);
+}
+.job-date-input:focus{
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--border-focus);
+}
+
+.job-done-info{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--success);
+  flex-wrap: wrap;
+}
+.done-check-icon{
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.done-text{
+  font-weight: 500;
+}
+.done-text strong{
+  font-weight: 700;
+}
+.btn-edit-date{
+  padding: 4px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all var(--t-fast);
+  margin-left: auto;
+}
+.btn-edit-date:hover{
+  background: var(--bg-card-hover);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.job-edit-box{
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
 
 /* ============================================================================
    MODAL / TOAST / LOADING
@@ -478,4 +820,11 @@ h1,h2,h3,h4{font-weight:700;letter-spacing:-0.01em}
   .user-chip-name{display:none}
   .login-card{padding:28px 20px}
   .progress-grid{grid-template-columns:1fr}
+  .team-stats-grid{grid-template-columns:1fr;gap:6px}
+  .team-hero-header{flex-direction:column;gap:10px}
+  .team-pct-pill{align-self:flex-start}
+  .job-card-header{flex-wrap:wrap}
+  .job-status-badge{margin-left:auto}
+  .job-input-group{flex-direction:column;align-items:stretch}
+  .job-date-input{width:100%}
 }

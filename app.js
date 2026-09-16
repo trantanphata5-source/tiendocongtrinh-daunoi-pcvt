@@ -776,6 +776,13 @@ function bindProgressEvents(container) {
 // ============================================================================
 // TEAM DASHBOARD (DVKH, QLHTDD, VHLD)
 // ============================================================================
+function sheetToInput(v) {
+  if (!v) return today();
+  const p = String(v).split('/');
+  if (p.length === 3) return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  return today();
+}
+
 function renderTeam(el) {
   const stepIdx = ROLE_STEP[currentUser.role];
   const step = STEPS[stepIdx];
@@ -783,7 +790,6 @@ function renderTeam(el) {
 
   const pending = [], completed = [];
   for (const s of allStations) {
-    // Kiểm tra bước trước đã hoàn thành (dùng getStepStates để tính đúng default date)
     const states = getStepStates(s);
     if (states[stepIdx - 1] === 'done') {
       if (states[stepIdx] === 'done') completed.push(s);
@@ -792,49 +798,141 @@ function renderTeam(el) {
   }
   const total = pending.length + completed.length;
   const showing = currentTab === 'pending' ? pending : completed;
+  const pctComplete = total > 0 ? Math.round((completed.length / total) * 100) : 0;
 
   el.innerHTML = `
-    <div class="stats-row">
-      <div class="stat-item"><div class="stat-num c-total">${total}</div><div class="stat-label">Tổng công trình</div></div>
-      <div class="stat-item"><div class="stat-num c-notdone">${pending.length}</div><div class="stat-label">Cần xử lý</div></div>
-      <div class="stat-item"><div class="stat-num c-done">${completed.length}</div><div class="stat-label">Đã hoàn thành</div></div>
+    <!-- Team Hero Card with Progress & Stats -->
+    <div class="team-hero-card">
+      <div class="team-hero-header">
+        <div class="team-hero-info">
+          <div class="team-role-badge role-${step.ownerKey}">
+            <span class="role-dot"></span> ${currentUser.name}
+          </div>
+          <h2 class="team-hero-title">${step.label}</h2>
+          <div class="team-hero-desc">Theo dõi và cập nhật tiến độ công trình trong phạm vi phụ trách</div>
+        </div>
+        <div class="team-pct-pill">
+          <span class="team-pct-num">${pctComplete}%</span>
+          <span class="team-pct-label">Hoàn thành</span>
+        </div>
+      </div>
+
+      <div class="team-progress-bar-wrap">
+        <div class="team-progress-bar" style="width: ${pctComplete}%"></div>
+      </div>
+
+      <div class="team-stats-grid">
+        <div class="team-stat-box box-total">
+          <div class="team-stat-icon">📁</div>
+          <div class="team-stat-data">
+            <div class="team-stat-num">${total}</div>
+            <div class="team-stat-label">Tổng công trình</div>
+          </div>
+        </div>
+        <div class="team-stat-box box-pending ${pending.length > 0 ? 'has-pending' : ''}">
+          <div class="team-stat-icon">⏳</div>
+          <div class="team-stat-data">
+            <div class="team-stat-num">${pending.length}</div>
+            <div class="team-stat-label">Cần xử lý</div>
+          </div>
+        </div>
+        <div class="team-stat-box box-done">
+          <div class="team-stat-icon">✅</div>
+          <div class="team-stat-data">
+            <div class="team-stat-num">${completed.length}</div>
+            <div class="team-stat-label">Đã hoàn thành</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="tab-nav">
-      <button class="tab-btn ${currentTab === 'pending' ? 'active' : ''}" data-tab="pending">
-        Cần xử lý <span class="tab-count">${pending.length}</span>
+    <!-- Main Navigation Tabs -->
+    <div class="main-tabs">
+      <button class="main-tab ${currentTab === 'pending' ? 'active tab-pending' : ''}" data-tab="pending">
+        ⏳ Cần xử lý <span class="tab-count">${pending.length}</span>
       </button>
-      <button class="tab-btn ${currentTab === 'completed' ? 'active' : ''}" data-tab="completed">
-        Hoàn thành <span class="tab-count">${completed.length}</span>
+      <button class="main-tab ${currentTab === 'completed' ? 'active tab-done' : ''}" data-tab="completed">
+        ✅ Đã hoàn thành <span class="tab-count">${completed.length}</span>
       </button>
     </div>
 
-    <div class="toolbar"><div class="search-box"><span class="search-icon">🔍</span><input type="text" placeholder="Tìm tên công trình..." id="teamSearch"></div></div>
+    <!-- Search Toolbar -->
+    <div class="toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Tìm tên công trình, địa chỉ..." id="teamSearch">
+      </div>
+    </div>
 
-    <div class="section-title">${currentTab === 'pending' ? '⏳' : '✅'} ${step.label} <span class="count-pill">${showing.length}</span></div>
+    <div class="section-title">
+      ${currentTab === 'pending' ? '⏳ Công trình cần xử lý' : '✅ Công trình đã hoàn thành'}
+      <span class="count-pill">${showing.length}</span>
+    </div>
 
-    <div id="jobList">
+    <!-- Job List -->
+    <div id="jobList" class="job-list">
       ${showing.length === 0 ? `
-        <div class="empty-state"><div class="empty-icon">${currentTab === 'pending' ? '🎉' : '📭'}</div><div class="empty-title">${currentTab === 'pending' ? 'Không có job cần xử lý!' : 'Chưa có job hoàn thành'}</div></div>
-      ` : showing.map(s => renderJobCard(s, step, currentTab === 'completed')).join('')}
+        <div class="empty-state">
+          <div class="empty-icon">${currentTab === 'pending' ? '🎉' : '📭'}</div>
+          <div class="empty-title">${currentTab === 'pending' ? 'Không có công trình nào cần xử lý!' : 'Chưa có công trình hoàn thành'}</div>
+          <div class="empty-desc">${currentTab === 'pending' ? 'Tất cả công trình đến bước này đã được cập nhật.' : ''}</div>
+        </div>
+      ` : showing.map(s => renderJobCard(s, step, prevStep, currentTab === 'completed')).join('')}
     </div>
   `;
   bindTeamEvents(step);
 }
 
-function renderJobCard(s, step, isDone) {
+function renderJobCard(s, step, prevStep, isDone) {
   const dateVal = s[step.key] || '';
+  const prevDateInfo = getStepDate(s, ROLE_STEP[currentUser.role] - 1);
+
   return `
-    <div class="job-card ${isDone ? 'done-card' : 'pending-card'}">
-      <div class="job-title">${esc(s.name)}</div>
-      <div class="job-meta">
-        <div class="job-meta-row">📍 ${esc(s.address || '—')}</div>
-        <div class="job-meta-row">⚡ ${s.kva ? esc(s.kva) + ' kVA' : '—'}</div>
+    <div class="job-card ${isDone ? 'done-card' : 'pending-card'}" id="job-${s.row}">
+      <div class="job-card-header">
+        <div class="job-stt">${esc(String(s.stt || ''))}</div>
+        <div class="job-title-box">
+          <div class="job-title">${esc(s.name)}</div>
+          <div class="job-meta">
+            <span class="job-meta-item">📍 ${esc(s.address || '—')}</span>
+            ${s.kva ? `<span class="job-meta-item">⚡ ${esc(s.kva)} kVA</span>` : ''}
+            ${s.contact ? `<span class="job-meta-item">📞 ${esc(s.contact)}</span>` : ''}
+          </div>
+        </div>
+        <div class="job-status-badge ${isDone ? 'badge-done' : 'badge-pending'}">
+          ${isDone ? '✓ Hoàn thành' : '⏳ Cần xử lý'}
+        </div>
       </div>
-      <div class="job-actions">
-        ${isDone ? `<div class="job-done-badge">✓ ${isDate(dateVal) ? dateVal : 'Hoàn thành'}</div>` : `
-          <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
-          <button class="btn btn-success btn-sm btn-update-job" data-row="${s.row}" data-col="${step.col}">✓ Cập nhật</button>
+
+      ${prevDateInfo.date ? `
+        <div class="job-prev-step">
+          <span class="prev-step-icon">↳</span>
+          <span>Bước trước (<strong>${prevStep.label}</strong>): <strong class="prev-date">${prevDateInfo.date}</strong></span>
+        </div>
+      ` : ''}
+
+      <div class="job-actions-panel">
+        ${isDone ? `
+          <div class="job-done-info" id="done-info-${s.row}">
+            <span class="done-check-icon">✓</span>
+            <span class="done-text">Ngày hoàn thành: <strong>${dateVal}</strong></span>
+            <button class="btn-edit-date" data-row="${s.row}" title="Chỉnh sửa ngày">✏️ Đổi ngày</button>
+          </div>
+          <div class="job-edit-box hidden" id="edit-box-${s.row}">
+            <input type="date" value="${dateVal ? sheetToInput(dateVal) : today()}" class="job-date-input" id="edit-input-${s.row}">
+            <button class="btn btn-primary btn-sm btn-save-edit" data-row="${s.row}" data-col="${step.col}">Lưu</button>
+            <button class="btn btn-outline btn-sm btn-cancel-edit" data-row="${s.row}">Hủy</button>
+          </div>
+        ` : `
+          <div class="job-update-form">
+            <div class="job-input-label">Cập nhật ngày hoàn thành:</div>
+            <div class="job-input-group">
+              <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}" class="job-date-input">
+              <button class="btn btn-success btn-sm btn-update-job" data-row="${s.row}" data-col="${step.col}">
+                ✓ Cập nhật ngày
+              </button>
+            </div>
+          </div>
         `}
       </div>
     </div>
@@ -842,24 +940,74 @@ function renderJobCard(s, step, isDone) {
 }
 
 function bindTeamEvents(step) {
-  $$('.tab-btn').forEach(b => b.addEventListener('click', () => { currentTab = b.dataset.tab; render(); }));
+  // Tabs
+  $$('.tab-btn, .main-tab').forEach(b => b.addEventListener('click', () => {
+    currentTab = b.dataset.tab;
+    render();
+  }));
+
+  // Update button in pending tab
   $$('.btn-update-job').forEach(btn => {
     btn.addEventListener('click', async () => {
       const row = parseInt(btn.dataset.row);
       const col = parseInt(btn.dataset.col);
       const inp = btn.previousElementSibling;
       const val = inputToSheet(inp.value);
-      if (!val) { toast('Chọn ngày', 'error'); return; }
+      if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
+      btn.textContent = '⏳ Đang lưu...'; btn.disabled = true;
+      const ok = await apiUpdate(row, col, val, currentUser.role);
+      if (ok) await loadAndRender();
+      else { btn.textContent = '✓ Cập nhật ngày'; btn.disabled = false; }
+    });
+  });
+
+  // Edit date buttons in completed tab
+  $$('.btn-edit-date').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.dataset.row;
+      const infoBox = $(`#done-info-${row}`);
+      const editBox = $(`#edit-box-${row}`);
+      if (infoBox && editBox) {
+        infoBox.classList.add('hidden');
+        editBox.classList.remove('hidden');
+      }
+    });
+  });
+
+  $$('.btn-cancel-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.dataset.row;
+      const infoBox = $(`#done-info-${row}`);
+      const editBox = $(`#edit-box-${row}`);
+      if (infoBox && editBox) {
+        infoBox.classList.remove('hidden');
+        editBox.classList.add('hidden');
+      }
+    });
+  });
+
+  $$('.btn-save-edit').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = parseInt(btn.dataset.row);
+      const col = parseInt(btn.dataset.col);
+      const inp = $(`#edit-input-${row}`);
+      const val = inputToSheet(inp.value);
+      if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
       if (ok) await loadAndRender();
-      else { btn.textContent = '✓ Cập nhật'; btn.disabled = false; }
+      else { btn.textContent = 'Lưu'; btn.disabled = false; }
     });
   });
+
+  // Search
   const ts = $('#teamSearch');
   if (ts) ts.addEventListener('input', () => {
     const q = ts.value.toLowerCase();
-    $$('.job-card').forEach(c => { c.style.display = (c.querySelector('.job-title')?.textContent?.toLowerCase() || '').includes(q) ? '' : 'none'; });
+    $$('.job-card').forEach(c => {
+      const text = c.textContent.toLowerCase();
+      c.style.display = text.includes(q) ? '' : 'none';
+    });
   });
 }
 
