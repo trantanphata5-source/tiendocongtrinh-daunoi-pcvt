@@ -74,48 +74,58 @@
         <div class="loading-text">Đang tải dữ liệu...</div>
       </div>
     </main>
+
+    <!-- Floating Action Button for Adding Station (KTAT) -->
+    <button class="fab-add-station hidden" id="fabAddBtn" title="Thêm trạm mới" aria-label="Thêm trạm mới">
+      <span class="fab-icon">＋</span>
+      <span class="fab-label">Thêm trạm mới</span>
+    </button>
   </div>
 
   <!-- ==================== MODAL ==================== -->
   <div class="modal-overlay hidden" id="addStationModal">
     <div class="modal-card">
+      <div class="modal-handle-bar"></div>
       <div class="modal-header">
         <h3 class="modal-title">Thêm trạm mới</h3>
-        <button class="modal-close" id="closeModalBtn">✕</button>
+        <button class="modal-close" id="closeModalBtn" type="button" aria-label="Đóng">✕</button>
       </div>
-      <form id="addStationForm">
+      <form id="addStationForm" autocomplete="off">
         <div class="form-group">
-          <label class="form-label">Tên công trình *</label>
+          <label class="form-label" for="newName">Tên công trình *</label>
           <input class="form-input" type="text" id="newName" placeholder="VD: TBA 560kVA - Công ty ABC" required>
         </div>
         <div class="form-group">
-          <label class="form-label">Địa chỉ</label>
-          <input class="form-input" type="text" id="newAddress" placeholder="VD: KCN Phú Mỹ 1">
+          <label class="form-label" for="newAddress">Địa chỉ</label>
+          <input class="form-input" type="text" id="newAddress" placeholder="VD: KCN Phú Mỹ 1, TX Phú Mỹ">
         </div>
         <div class="form-group">
-          <label class="form-label">KVA</label>
-          <input class="form-input" type="text" id="newKVA" placeholder="VD: 560">
+          <label class="form-label" for="newKVA">Công suất kVA</label>
+          <input class="form-input" type="number" inputmode="numeric" id="newKVA" placeholder="VD: 560">
         </div>
         <div class="form-group">
-          <label class="form-label">Liên hệ</label>
-          <input class="form-input" type="text" id="newContact" placeholder="SĐT liên hệ">
+          <label class="form-label" for="newContact">Số điện thoại liên hệ</label>
+          <input class="form-input" type="tel" inputmode="tel" id="newContact" placeholder="VD: 0912 345 678">
         </div>
         <div class="form-group">
-          <label class="form-label">Xây lắp</label>
-          <input class="form-input" type="text" id="newXayLap" placeholder="Đơn vị xây lắp">
+          <label class="form-label" for="newXayLap">Đơn vị xây lắp</label>
+          <input class="form-input" type="text" id="newXayLap" placeholder="VD: Công ty TNHH Xây lắp...">
         </div>
         <div class="form-group">
-          <label class="form-label">Ngày đề nghị</label>
+          <div class="form-label-row">
+            <label class="form-label" for="newDeNghi">Ngày đề nghị</label>
+            <button type="button" class="btn-quick-today" id="btnTodayDeNghi">⚡ Hôm nay</button>
+          </div>
           <input class="form-input" type="date" id="newDeNghi">
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-outline" id="cancelModalBtn">Hủy</button>
-          <button type="submit" class="btn btn-success" id="submitStationBtn">✓ Thêm trạm</button>
+          <button type="submit" class="btn btn-success" id="submitStationBtn">✓ Thêm trạm mới</button>
         </div>
       </form>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3.2"></script>
 </body>
 </html>

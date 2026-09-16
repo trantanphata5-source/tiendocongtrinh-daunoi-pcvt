@@ -212,6 +212,8 @@ function logout() {
   if (refreshTimer) clearInterval(refreshTimer);
   $('#loginPage').classList.remove('hidden');
   $('#appPage').classList.add('hidden');
+  const fab = $('#fabAddBtn');
+  if (fab) fab.classList.add('hidden');
   $('#loginPassword').value = ''; $('#loginError').textContent = '';
 }
 function checkSession() {
@@ -224,6 +226,14 @@ async function showApp() {
   const initials = currentUser.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   $('#userAvatar').textContent = initials;
   $('#userName').textContent = currentUser.name;
+
+  // Show FAB Add button only for KTAT role
+  const fab = $('#fabAddBtn');
+  if (fab) {
+    if (currentUser.role === 'ktat') fab.classList.remove('hidden');
+    else fab.classList.add('hidden');
+  }
+
   await loadAndRender();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(silentRefresh, REFRESH_MS);
@@ -527,7 +537,10 @@ function renderTimeline(s, states, highlightStepIdx) {
                   <div class="tree-date">${dateInfo.date} ${dateInfo.isDefault ? '<span class="tree-date-note">(ngày mặc định)</span>' : ''}</div>
                 ` : (state === 'active' && canEdit) ? `
                   <div class="tree-date-input">
-                    <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
+                    <div class="tree-date-row">
+                      <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
+                      <button type="button" class="btn-today-shortcut" title="Chọn hôm nay">⚡ Hôm nay</button>
+                    </div>
                     <button class="btn btn-success btn-sm btn-save-timeline" data-row="${s.row}" data-col="${step.col}">Lưu</button>
                   </div>
                 ` : `<div class="tree-date">—</div>`}
@@ -562,7 +575,7 @@ function bindStationListEvents(container) {
   if (fs) fs.addEventListener('change', () => { filterStatus = fs.value; renderStationList(container); });
 
   const ab = container.querySelector('#addBtn');
-  if (ab) ab.addEventListener('click', () => { $('#addStationModal').classList.remove('hidden'); $('#newName').focus(); });
+  if (ab) ab.addEventListener('click', openAddStationModal);
 
   // Expand/collapse — DOM manipulation instead of full re-render (fix scroll jump)
   container.querySelectorAll('.station-card-header').forEach(h => {
@@ -613,12 +626,29 @@ function bindStationListEvents(container) {
 }
 
 function bindTimelineSaveButtons(container) {
+  // Quick today button in timeline
+  container.querySelectorAll('.btn-today-shortcut').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const parent = b.closest('.tree-date-row') || b.closest('.tree-date-input');
+      if (parent) {
+        const inp = parent.querySelector('input[type="date"]');
+        if (inp) {
+          inp.value = today();
+          inp.classList.add('flash-input');
+          setTimeout(() => inp.classList.remove('flash-input'), 600);
+        }
+      }
+    });
+  });
+
   container.querySelectorAll('.btn-save-timeline').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const row = parseInt(btn.dataset.row);
       const col = parseInt(btn.dataset.col);
-      const inp = btn.previousElementSibling;
+      const inp = btn.parentElement.querySelector('input[type="date"]');
+      if (!inp) return;
       const val = inputToSheet(inp.value);
       if (!val) { toast('Chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
@@ -919,16 +949,24 @@ function renderJobCard(s, step, prevStep, isDone) {
             <button class="btn-edit-date" data-row="${s.row}" title="Chỉnh sửa ngày">✏️ Đổi ngày</button>
           </div>
           <div class="job-edit-box hidden" id="edit-box-${s.row}">
-            <input type="date" value="${dateVal ? sheetToInput(dateVal) : today()}" class="job-date-input" id="edit-input-${s.row}">
-            <button class="btn btn-primary btn-sm btn-save-edit" data-row="${s.row}" data-col="${step.col}">Lưu</button>
-            <button class="btn btn-outline btn-sm btn-cancel-edit" data-row="${s.row}">Hủy</button>
+            <div class="job-input-with-quick">
+              <input type="date" value="${dateVal ? sheetToInput(dateVal) : today()}" class="job-date-input" id="edit-input-${s.row}">
+              <button type="button" class="btn-today-shortcut" data-target="edit-input-${s.row}" title="Chọn hôm nay">⚡ Hôm nay</button>
+            </div>
+            <div class="job-edit-actions">
+              <button class="btn btn-primary btn-sm btn-save-edit" data-row="${s.row}" data-col="${step.col}">Lưu</button>
+              <button class="btn btn-outline btn-sm btn-cancel-edit" data-row="${s.row}">Hủy</button>
+            </div>
           </div>
         ` : `
           <div class="job-update-form">
             <div class="job-input-label">Cập nhật ngày hoàn thành:</div>
             <div class="job-input-group">
-              <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}" class="job-date-input">
-              <button class="btn btn-success btn-sm btn-update-job" data-row="${s.row}" data-col="${step.col}">
+              <div class="job-input-with-quick">
+                <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}" class="job-date-input" id="job-input-${s.row}">
+                <button type="button" class="btn-today-shortcut" data-target="job-input-${s.row}" title="Chọn ngày hôm nay">⚡ Hôm nay</button>
+              </div>
+              <button class="btn btn-success btn-update-job" data-row="${s.row}" data-col="${step.col}">
                 ✓ Cập nhật ngày
               </button>
             </div>
@@ -946,12 +984,32 @@ function bindTeamEvents(step) {
     render();
   }));
 
+  // Quick today shortcuts
+  $$('.btn-today-shortcut').forEach(b => {
+    b.addEventListener('click', () => {
+      let inp = null;
+      if (b.dataset.target) {
+        inp = $(`#${b.dataset.target}`);
+      } else {
+        const wrap = b.closest('.job-input-with-quick') || b.closest('.job-input-group') || b.closest('.tree-date-input');
+        if (wrap) inp = wrap.querySelector('input[type="date"]');
+      }
+      if (inp) {
+        inp.value = today();
+        inp.classList.add('flash-input');
+        setTimeout(() => inp.classList.remove('flash-input'), 600);
+      }
+    });
+  });
+
   // Update button in pending tab
   $$('.btn-update-job').forEach(btn => {
     btn.addEventListener('click', async () => {
       const row = parseInt(btn.dataset.row);
       const col = parseInt(btn.dataset.col);
-      const inp = btn.previousElementSibling;
+      const card = btn.closest('.job-card');
+      const inp = card ? card.querySelector(`#job-input-${row}`) : null;
+      if (!inp) return;
       const val = inputToSheet(inp.value);
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '⏳ Đang lưu...'; btn.disabled = true;
@@ -991,6 +1049,7 @@ function bindTeamEvents(step) {
       const row = parseInt(btn.dataset.row);
       const col = parseInt(btn.dataset.col);
       const inp = $(`#edit-input-${row}`);
+      if (!inp) return;
       const val = inputToSheet(inp.value);
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
@@ -1012,8 +1071,26 @@ function bindTeamEvents(step) {
 }
 
 // ============================================================================
-// ADD STATION MODAL
+// ADD STATION MODAL & MOBILE ACTIONS
 // ============================================================================
+function openAddStationModal() {
+  const modal = $('#addStationModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  setTimeout(() => {
+    const nameInp = $('#newName');
+    if (nameInp) nameInp.focus();
+  }, 100);
+}
+
+function closeAddStationModal() {
+  const modal = $('#addStationModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+}
+
 function handleAddStation(e) {
   e.preventDefault();
   const name = $('#newName').value.trim();
@@ -1026,8 +1103,12 @@ function handleAddStation(e) {
   const btn = $('#submitStationBtn');
   btn.disabled = true; btn.textContent = '⏳ Đang thêm...';
   apiAddStation(data).then(ok => {
-    btn.disabled = false; btn.textContent = '✓ Thêm trạm';
-    if (ok) { $('#addStationModal').classList.add('hidden'); $('#addStationForm').reset(); loadAndRender(); }
+    btn.disabled = false; btn.textContent = '✓ Thêm trạm mới';
+    if (ok) {
+      closeAddStationModal();
+      $('#addStationForm').reset();
+      loadAndRender();
+    }
   });
 }
 
@@ -1039,10 +1120,34 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#loginForm').addEventListener('submit', handleLogin);
   $('#logoutBtn').addEventListener('click', logout);
   $('#themeToggle').addEventListener('click', toggleTheme);
-  $('#closeModalBtn').addEventListener('click', () => $('#addStationModal').classList.add('hidden'));
-  $('#cancelModalBtn').addEventListener('click', () => $('#addStationModal').classList.add('hidden'));
+
+  // Modal events
+  $('#closeModalBtn').addEventListener('click', closeAddStationModal);
+  $('#cancelModalBtn').addEventListener('click', closeAddStationModal);
   $('#addStationForm').addEventListener('submit', handleAddStation);
-  $('#addStationModal').addEventListener('click', e => { if (e.target === $('#addStationModal')) $('#addStationModal').classList.add('hidden'); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#addStationModal').classList.add('hidden'); });
+  $('#addStationModal').addEventListener('click', e => {
+    if (e.target === $('#addStationModal')) closeAddStationModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAddStationModal();
+  });
+
+  // FAB button
+  const fab = $('#fabAddBtn');
+  if (fab) fab.addEventListener('click', openAddStationModal);
+
+  // Quick Today button for new station proposal date
+  const btnTodayDeNghi = $('#btnTodayDeNghi');
+  if (btnTodayDeNghi) {
+    btnTodayDeNghi.addEventListener('click', () => {
+      const inp = $('#newDeNghi');
+      if (inp) {
+        inp.value = today();
+        inp.classList.add('flash-input');
+        setTimeout(() => inp.classList.remove('flash-input'), 600);
+      }
+    });
+  }
+
   checkSession();
 });
