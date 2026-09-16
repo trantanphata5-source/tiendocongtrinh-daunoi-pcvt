@@ -8,7 +8,7 @@
 // ============================================================================
 // CONFIG
 // ============================================================================
-const GAS_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwQo1ZlT_WsYRSHSVaCiamXLZE65rCLqlmA_g5YqWA96AS9835W9dOuFalxHhkQN17_/exec';
 const SHEET_ID = '17tJxLIPGAdxQY3fJlSogvvTinQAAizTVoh2B1fClY5E';
 const SHEET_NAME = 'DS PT TRẠM KH';
 const GVIZ_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_NAME)}`;
