@@ -21,11 +21,11 @@ const ACCOUNTS = {
 };
 
 const STEPS = [
-  { key: 'deNghi',   label: 'Thỏa thuận đấu nối',         short: 'TTĐN',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 7  },
-  { key: 'tntkNgay', label: 'Chấp thuận thiết kế',         short: 'CTTK',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 9  },
-  { key: 'hopDong',  label: 'Ký hợp đồng mua bán điện',    short: 'Ký HĐ',   owner: 'Đội DVKH',     ownerKey: 'dvkh',   col: 11 },
-  { key: 'doDem',    label: 'Thi công HT đo đếm',          short: 'Đo đếm',  owner: 'Đội QLHTĐĐ',   ownerKey: 'qlhtdd', col: 12 },
-  { key: 'dongDien', label: 'Đóng điện',                    short: 'Đóng Đ',  owner: 'Đội VHLĐ',     ownerKey: 'vhld',   col: 13 }
+  { key: 'deNghi',   label: 'Thỏa thuận đấu nối',         short: 'TTĐN',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 7,  color: '#3b82f6' },
+  { key: 'tntkNgay', label: 'Chấp thuận thiết kế',         short: 'CTTK',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 9,  color: '#8b5cf6' },
+  { key: 'hopDong',  label: 'Ký hợp đồng mua bán điện',    short: 'Ký HĐ',   owner: 'Đội DVKH',     ownerKey: 'dvkh',   col: 11, color: '#f59e0b' },
+  { key: 'doDem',    label: 'Thi công HT đo đếm',          short: 'Đo đếm',  owner: 'Đội QLHTĐĐ',   ownerKey: 'qlhtdd', col: 12, color: '#06b6d4' },
+  { key: 'dongDien', label: 'Đóng điện',                    short: 'Đóng Đ',  owner: 'Đội VHLĐ',     ownerKey: 'vhld',   col: 13, color: '#10b981' }
 ];
 
 const ROLE_STEP = { 'dvkh': 2, 'qlhtdd': 3, 'vhld': 4 };
@@ -41,7 +41,7 @@ let expandedId = null;
 let refreshTimer = null;
 let isGASAvailable = false;
 let currentTab = 'pending';    // team tab
-let mainTab = 'list';          // KTAT: 'list' | 'progress'
+let mainTab = 'progress';      // KTAT: 'progress' | 'list' (default is 'progress')
 let searchQuery = '';
 let filterStatus = 'all';
 let progressFilter = 'all';    // progress tab filter
@@ -290,6 +290,120 @@ function render() {
 }
 
 // ============================================================================
+// SEMI-DONUT CHART (Biểu đồ vành khăn 1 nửa)
+// ============================================================================
+function renderSemiDonutChart(total, done, notDone, stepCounts) {
+  const cx = 130, cy = 118;
+  const R = 90, r = 58;
+  const gapDeg = 2.5;
+  const numSteps = STEPS.length;
+  const totalGaps = (numSteps - 1) * gapDeg;
+  const availDeg = 180 - totalGaps;
+  
+  // Weights based on stepCounts
+  const sumCounts = stepCounts.reduce((a, b) => a + b, 0) || 1;
+  const rawAngles = stepCounts.map(c => Math.max(10, (c / sumCounts) * availDeg));
+  const normSum = rawAngles.reduce((a, b) => a + b, 0);
+  const normAngles = rawAngles.map(a => (a / normSum) * availDeg);
+
+  let curAngle = 180;
+  const paths = [];
+
+  for (let i = 0; i < numSteps; i++) {
+    const a1 = curAngle;
+    const a2 = curAngle - normAngles[i];
+    curAngle = a2 - gapDeg;
+
+    const rad1 = (a1 * Math.PI) / 180;
+    const rad2 = (a2 * Math.PI) / 180;
+
+    const x1_out = (cx + R * Math.cos(rad1)).toFixed(2);
+    const y1_out = (cy - R * Math.sin(rad1)).toFixed(2);
+    const x2_out = (cx + R * Math.cos(rad2)).toFixed(2);
+    const y2_out = (cy - R * Math.sin(rad2)).toFixed(2);
+
+    const x2_in = (cx + r * Math.cos(rad2)).toFixed(2);
+    const y2_in = (cy - r * Math.sin(rad2)).toFixed(2);
+    const x1_in = (cx + r * Math.cos(rad1)).toFixed(2);
+    const y1_in = (cy - r * Math.sin(rad1)).toFixed(2);
+
+    const d = `M ${x1_out} ${y1_out} A ${R} ${R} 0 0 1 ${x2_out} ${y2_out} L ${x2_in} ${y2_in} A ${r} ${r} 0 0 0 ${x1_in} ${y1_in} Z`;
+    paths.push(`
+      <path class="donut-slice slice-${i}" data-step="${i}" d="${d}" fill="${STEPS[i].color}">
+        <title>${STEPS[i].label}: ${stepCounts[i]} trạm</title>
+      </path>
+    `);
+  }
+
+  const pctDone = total > 0 ? Math.round((done / total) * 100) : 0;
+  const pctNotDone = 100 - pctDone;
+
+  return `
+    <div class="stats-donut-container">
+      <div class="donut-chart-wrapper">
+        <svg class="donut-svg" viewBox="0 0 260 132" aria-label="Biểu đồ tiến độ vành khăn 1 nửa">
+          <g class="donut-slices">
+            ${paths.join('')}
+          </g>
+          <!-- Center total count -->
+          <text class="donut-center-num" x="${cx}" y="${cy - 22}" text-anchor="middle">${total}</text>
+          <text class="donut-center-label" x="${cx}" y="${cy - 4}" text-anchor="middle">Tổng trạm</text>
+        </svg>
+
+        <!-- Sub status under chart -->
+        <div class="donut-substats">
+          <span class="donut-sub-pill pill-done" title="Đã đóng điện hoàn thành">
+            <span class="sub-dot"></span> Đã đóng điện: <strong>${done}</strong> <small>(${pctDone}%)</small>
+          </span>
+          <span class="donut-sub-pill pill-notdone" title="Chưa đóng điện">
+            <span class="sub-dot"></span> Chưa đóng điện: <strong>${notDone}</strong> <small>(${pctNotDone}%)</small>
+          </span>
+        </div>
+      </div>
+
+      <div class="donut-legend">
+        ${STEPS.map((st, i) => `
+          <div class="donut-legend-item" data-step="${i}">
+            <div class="donut-legend-info">
+              <span class="donut-legend-dot" style="background:${st.color}"></span>
+              <span class="donut-legend-name">${st.label}</span>
+            </div>
+            <div class="donut-legend-stats">
+              <span class="donut-legend-arrow">➜</span>
+              <span class="donut-legend-count" style="color:${st.color}">${stepCounts[i]} <span class="unit">trạm</span></span>
+              <span class="donut-legend-owner">(${st.owner})</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function bindDonutInteractions(container) {
+  const slices = container.querySelectorAll('.donut-slice');
+  const items = container.querySelectorAll('.donut-legend-item');
+  
+  function highlight(idx) {
+    slices.forEach(s => s.classList.toggle('active-slice', s.dataset.step === String(idx)));
+    items.forEach(it => it.classList.toggle('active-item', it.dataset.step === String(idx)));
+  }
+  function clear() {
+    slices.forEach(s => s.classList.remove('active-slice'));
+    items.forEach(it => it.classList.remove('active-item'));
+  }
+
+  slices.forEach(s => {
+    s.addEventListener('mouseenter', () => highlight(s.dataset.step));
+    s.addEventListener('mouseleave', clear);
+  });
+  items.forEach(it => {
+    it.addEventListener('mouseenter', () => highlight(it.dataset.step));
+    it.addEventListener('mouseleave', clear);
+  });
+}
+
+// ============================================================================
 // KTAT DASHBOARD
 // ============================================================================
 function renderKTAT(el) {
@@ -309,35 +423,23 @@ function renderKTAT(el) {
   const incomplete = allStations.filter(s => !isDate(s.dongDien));
   
   el.innerHTML = `
-    <!-- Stats summary -->
-    <div class="stats-row">
-      <div class="stat-item"><div class="stat-num c-total">${total}</div><div class="stat-label">Tổng trạm</div></div>
-      <div class="stat-item"><div class="stat-num c-done">${done}</div><div class="stat-label">Đã đóng điện</div></div>
-      <div class="stat-item"><div class="stat-num c-notdone">${notDone}</div><div class="stat-label">Chưa đóng điện</div></div>
-    </div>
-    
-    <!-- Per-step stats -->
-    <div class="stats-row-5">
-      ${STEPS.map((st, i) => `
-        <div class="stat-item stat-item-sm">
-          <div class="stat-num" style="color:${i < 4 ? 'var(--info)' : 'var(--success)'}">${stepCounts[i]}</div>
-          <div class="stat-label">${st.short}</div>
-        </div>
-      `).join('')}
-    </div>
+    <!-- Semi-donut chart on left, full labels with arrows on right -->
+    ${renderSemiDonutChart(total, done, notDone, stepCounts)}
 
-    <!-- Main tabs -->
+    <!-- Main tabs: Tiến độ cập nhật (LEFT / DEFAULT) | Danh sách trạm (RIGHT) -->
     <div class="main-tabs">
-      <button class="main-tab ${mainTab === 'list' ? 'active' : ''}" data-tab="list">
-        Danh sách trạm <span class="tab-count">${total}</span>
-      </button>
       <button class="main-tab ${mainTab === 'progress' ? 'active' : ''}" data-tab="progress">
         Tiến độ cập nhật <span class="tab-count">${incomplete.length}</span>
+      </button>
+      <button class="main-tab ${mainTab === 'list' ? 'active' : ''}" data-tab="list">
+        Danh sách trạm <span class="tab-count">${total}</span>
       </button>
     </div>
 
     <div id="tabContent"></div>
   `;
+
+  bindDonutInteractions(el);
 
   // Bind main tabs
   el.querySelectorAll('.main-tab').forEach(btn => {
@@ -347,8 +449,8 @@ function renderKTAT(el) {
     });
   });
 
-  if (mainTab === 'list') renderStationList(el.querySelector('#tabContent'));
-  else renderProgressTab(el.querySelector('#tabContent'));
+  if (mainTab === 'progress') renderProgressTab(el.querySelector('#tabContent'));
+  else renderStationList(el.querySelector('#tabContent'));
 }
 
 // ---- Station List Tab ----
@@ -531,33 +633,31 @@ function bindTimelineSaveButtons(container) {
 function renderProgressTab(container) {
   let incomplete = allStations.filter(s => !isDate(s.dongDien));
 
-  // Apply step filter
+  // Apply step filter: trạm đang ở bước nào (active step)
   if (progressFilter !== 'all') {
     const stepIdx = parseInt(progressFilter);
-    incomplete = incomplete.filter(s => {
-      const states = getStepStates(s);
-      return states[stepIdx] === 'active' || states[stepIdx] === 'pending';
-    });
+    incomplete = incomplete.filter(s => getActiveStepIndex(s) === stepIdx);
   }
 
   container.innerHTML = `
     <div class="toolbar">
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input type="text" placeholder="Tìm trạm..." id="progSearch">
+        <input type="text" placeholder="Tìm trạm, địa chỉ..." id="progSearch">
       </div>
       <select class="filter-select" id="progFilter">
-        <option value="all" ${progressFilter === 'all' ? 'selected' : ''}>Tất cả bước</option>
-        <option value="1" ${progressFilter === '1' ? 'selected' : ''}>B2: Chấp thuận TK</option>
-        <option value="2" ${progressFilter === '2' ? 'selected' : ''}>B3: Ký HĐ</option>
-        <option value="3" ${progressFilter === '3' ? 'selected' : ''}>B4: Đo đếm</option>
-        <option value="4" ${progressFilter === '4' ? 'selected' : ''}>B5: Đóng điện</option>
+        <option value="all" ${progressFilter === 'all' ? 'selected' : ''}>Tất cả các bước</option>
+        <option value="0" ${progressFilter === '0' ? 'selected' : ''}>Thỏa thuận đấu nối</option>
+        <option value="1" ${progressFilter === '1' ? 'selected' : ''}>Chấp thuận thiết kế</option>
+        <option value="2" ${progressFilter === '2' ? 'selected' : ''}>Ký hợp đồng mua bán điện</option>
+        <option value="3" ${progressFilter === '3' ? 'selected' : ''}>Thi công HT đo đếm</option>
+        <option value="4" ${progressFilter === '4' ? 'selected' : ''}>Đóng điện</option>
       </select>
     </div>
     <div class="section-title">Trạm chưa hoàn thành <span class="count-pill">${incomplete.length}</span></div>
     <div class="progress-grid" id="progressGrid">
       ${incomplete.length === 0 ? `
-        <div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">Tất cả đã hoàn thành!</div></div>
+        <div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">Không có trạm nào trong danh mục này!</div></div>
       ` : incomplete.map(s => renderProgressCard(s)).join('')}
     </div>
   `;
@@ -573,9 +673,12 @@ function renderProgressCard(s) {
 
   return `
     <div class="progress-card ${isExpanded ? 'prog-expanded' : ''}" data-row="${s.row}" id="pc-${s.row}">
-      <div class="progress-card-top" data-row="${s.row}">
+      <div class="progress-card-top">
         <div class="progress-card-name">${esc(s.name)}</div>
-        ${activeStep ? `<div class="progress-card-owner owner-${activeStep.ownerKey}">${activeStep.owner}</div>` : ''}
+        <div class="progress-card-top-right">
+          ${activeStep ? `<div class="progress-card-owner owner-${activeStep.ownerKey}">${activeStep.owner}</div>` : ''}
+          <span class="prog-expand-icon">${isExpanded ? '▲' : '▼'}</span>
+        </div>
       </div>
       <div class="progress-card-meta">
         <span>📍 ${esc(s.address || '—')}</span>
@@ -591,54 +694,83 @@ function renderProgressCard(s) {
 
 function bindProgressEvents(container) {
   const ps = container.querySelector('#progSearch');
-  if (ps) ps.addEventListener('input', () => {
-    const q = ps.value.toLowerCase();
-    container.querySelectorAll('.progress-card').forEach(c => {
-      const name = c.querySelector('.progress-card-name')?.textContent?.toLowerCase() || '';
-      c.style.display = name.includes(q) ? '' : 'none';
+  if (ps) {
+    ps.addEventListener('input', () => {
+      const q = ps.value.toLowerCase();
+      container.querySelectorAll('.progress-card').forEach(c => {
+        const text = c.textContent.toLowerCase();
+        c.style.display = text.includes(q) ? '' : 'none';
+      });
     });
-  });
+  }
 
   const pf = container.querySelector('#progFilter');
-  if (pf) pf.addEventListener('change', () => { progressFilter = pf.value; renderProgressTab(container); });
+  if (pf) {
+    pf.addEventListener('change', () => {
+      progressFilter = pf.value;
+      renderProgressTab(container);
+    });
+  }
 
-  // Click to expand/collapse progress cards — DOM manipulation (no re-render)
-  container.querySelectorAll('.progress-card-top').forEach(top => {
-    top.addEventListener('click', () => {
-      const row = parseInt(top.dataset.row);
-      const card = container.querySelector(`#pc-${row}`);
+  // Fast event delegation on progressGrid — click anywhere on card to expand/collapse
+  const grid = container.querySelector('#progressGrid');
+  if (grid) {
+    grid.addEventListener('click', (e) => {
+      // Don't toggle if clicking inside input or button in timeline
+      if (e.target.closest('input, button, .tree-date-input, .btn-save-timeline, a')) return;
+
+      const card = e.target.closest('.progress-card');
       if (!card) return;
+      const row = parseInt(card.dataset.row);
+      if (!row) return;
 
-      // Collapse previous
-      if (progExpandedId && progExpandedId !== row) {
-        const prev = container.querySelector(`#pc-${progExpandedId}`);
-        if (prev) {
-          prev.classList.remove('prog-expanded');
-          const oldPanel = prev.querySelector('.timeline-panel');
-          if (oldPanel) oldPanel.remove();
-        }
-      }
-
+      // If already expanded -> collapse
       if (progExpandedId === row) {
         card.classList.remove('prog-expanded');
         const panel = card.querySelector('.timeline-panel');
         if (panel) panel.remove();
+        const icon = card.querySelector('.prog-expand-icon');
+        if (icon) icon.textContent = '▼';
         progExpandedId = null;
-      } else {
-        progExpandedId = row;
-        card.classList.add('prog-expanded');
-        const s = allStations.find(x => x.row === row);
-        if (s) {
-          const states = getStepStates(s);
-          const activeIdx = getActiveStepIndex(s);
-          const html = renderTimeline(s, states, activeIdx);
-          card.insertAdjacentHTML('beforeend', html);
-          bindTimelineSaveButtons(card);
-          setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+        return;
+      }
+
+      // Collapse previously expanded card if any
+      if (progExpandedId) {
+        const prev = grid.querySelector(`#pc-${progExpandedId}`);
+        if (prev) {
+          prev.classList.remove('prog-expanded');
+          const oldPanel = prev.querySelector('.timeline-panel');
+          if (oldPanel) oldPanel.remove();
+          const oldIcon = prev.querySelector('.prog-expand-icon');
+          if (oldIcon) oldIcon.textContent = '▼';
         }
       }
+
+      // Expand this card
+      progExpandedId = row;
+      card.classList.add('prog-expanded');
+      const icon = card.querySelector('.prog-expand-icon');
+      if (icon) icon.textContent = '▲';
+
+      const s = allStations.find(x => x.row === row);
+      if (s) {
+        const states = getStepStates(s);
+        const activeIdx = getActiveStepIndex(s);
+        const html = renderTimeline(s, states, activeIdx);
+        card.insertAdjacentHTML('beforeend', html);
+        bindTimelineSaveButtons(card);
+
+        // Only scroll if card top is out of view (removes delay when already visible)
+        requestAnimationFrame(() => {
+          const rect = card.getBoundingClientRect();
+          if (rect.top < 65 || rect.bottom > window.innerHeight) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        });
+      }
     });
-  });
+  }
 }
 
 // ============================================================================
