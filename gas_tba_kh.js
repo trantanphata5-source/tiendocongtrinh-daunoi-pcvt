@@ -73,7 +73,7 @@ function readAllStations() {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 13).getDisplayValues();
   var stations = [];
 
   for (var i = 0; i < data.length; i++) {
