@@ -1,24 +1,16 @@
 /**
- * APP.JS V2 — Tiến Độ TBA Khách Hàng — PC Vũng Tàu
+ * APP.JS V3 — Cập nhật tiến độ phát triển trạm KH — PC Vũng Tàu
  * 
- * ✅ JSONP load (fix CORS khi mở file:// local)
- * ✅ Light/Dark theme toggle
- * ✅ Mobile-first card layout
- * ✅ Vertical tree timeline (click expand)
- * ✅ GAS API cho ghi dữ liệu
- * 
- * ⚠️ THAY GAS_URL sau khi deploy Google Apps Script!
+ * Fixes: no flash on refresh, no scroll jump on expand, default date logic
+ * Features: 5-step stats, "Tiến độ cập nhật" grid tab with owner filter
  */
 
 // ============================================================================
 // CONFIG
 // ============================================================================
 const GAS_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
-
 const SHEET_ID = '17tJxLIPGAdxQY3fJlSogvvTinQAAizTVoh2B1fClY5E';
 const SHEET_NAME = 'DS PT TRẠM KH';
-
-// Google Visualization API base URL (no tqx — we build it with responseHandler in fetchViaJSONP)
 const GVIZ_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${encodeURIComponent(SHEET_NAME)}`;
 
 const ACCOUNTS = {
@@ -29,46 +21,45 @@ const ACCOUNTS = {
 };
 
 const STEPS = [
-  { key: 'deNghi',   label: 'Thỏa thuận đấu nối',   owner: 'Phòng KTAT',   col: 7  },
-  { key: 'tntkNgay', label: 'Chấp thuận thiết kế',   owner: 'Phòng KTAT',   col: 9  },
-  { key: 'hopDong',  label: 'Ký hợp đồng mua bán điện', owner: 'Đội DVKH',    col: 11 },
-  { key: 'doDem',    label: 'Thi công HT đo đếm',    owner: 'Đội QLHTĐĐ',   col: 12 },
-  { key: 'dongDien', label: 'Đóng điện',              owner: 'Đội VHLĐ',     col: 13 }
+  { key: 'deNghi',   label: 'Thỏa thuận đấu nối',         short: 'TTĐN',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 7  },
+  { key: 'tntkNgay', label: 'Chấp thuận thiết kế',         short: 'CTTK',    owner: 'Phòng KTAT',   ownerKey: 'ktat',   col: 9  },
+  { key: 'hopDong',  label: 'Ký hợp đồng mua bán điện',    short: 'Ký HĐ',   owner: 'Đội DVKH',     ownerKey: 'dvkh',   col: 11 },
+  { key: 'doDem',    label: 'Thi công HT đo đếm',          short: 'Đo đếm',  owner: 'Đội QLHTĐĐ',   ownerKey: 'qlhtdd', col: 12 },
+  { key: 'dongDien', label: 'Đóng điện',                    short: 'Đóng Đ',  owner: 'Đội VHLĐ',     ownerKey: 'vhld',   col: 13 }
 ];
 
 const ROLE_STEP = { 'dvkh': 2, 'qlhtdd': 3, 'vhld': 4 };
-const REFRESH_MS = 60000;
+const DEFAULT_DATE = '01/01/2026';
+const REFRESH_MS = 90000;
 
 // ============================================================================
 // STATE
 // ============================================================================
 let currentUser = null;
 let allStations = [];
-let expandedId = null;    // which station card is expanded
+let expandedId = null;
 let refreshTimer = null;
 let isGASAvailable = false;
-let currentTab = 'pending';
+let currentTab = 'pending';    // team tab
+let mainTab = 'list';          // KTAT: 'list' | 'progress'
 let searchQuery = '';
 let filterStatus = 'all';
+let progressFilter = 'all';    // progress tab filter
+let progExpandedId = null;
+let lastDataHash = '';
 
 // ============================================================================
 // UTILS
 // ============================================================================
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
-const esc = s => { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
+const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
 
 function isDate(s) {
   if (!s) return false;
   s = String(s).trim();
-  if (!s || s === '0' || s.toLowerCase().startsWith('chưa') || s.toLowerCase() === 'chưa đóng điện') return false;
+  if (!s || s === '0' || s.toLowerCase().startsWith('chưa')) return false;
   return /\d{1,2}\/\d{1,2}\/\d{4}/.test(s);
-}
-
-function dateToInput(d) {
-  if (!d || !isDate(d)) return '';
-  const p = d.split('/');
-  return p.length === 3 ? `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}` : '';
 }
 
 function inputToSheet(v) {
@@ -82,17 +73,21 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+function hashData(stations) {
+  return stations.map(s => `${s.row}|${s.deNghi}|${s.tntkNgay}|${s.hopDong}|${s.doDem}|${s.dongDien}`).join(';');
+}
+
 // ============================================================================
 // TOAST
 // ============================================================================
-function toast(msg, type='info') {
+function toast(msg, type = 'info') {
   const c = $('#toastContainer');
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
-  const icons = { success:'✓', error:'✕', info:'ℹ' };
-  t.innerHTML = `<span>${icons[type]||'ℹ'}</span> ${esc(msg)}`;
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  t.innerHTML = `<span>${icons[type] || 'ℹ'}</span> ${esc(msg)}`;
   c.appendChild(t);
-  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(20px)'; t.style.transition='all 0.3s'; setTimeout(()=>t.remove(),300); }, 3500);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(20px)'; t.style.transition = 'all 0.3s'; setTimeout(() => t.remove(), 300); }, 3500);
 }
 
 // ============================================================================
@@ -103,7 +98,6 @@ function initTheme() {
   document.documentElement.setAttribute('data-theme', saved);
   updateThemeIcon(saved);
 }
-
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme');
   const next = cur === 'dark' ? 'light' : 'dark';
@@ -111,44 +105,22 @@ function toggleTheme() {
   localStorage.setItem('tba_theme', next);
   updateThemeIcon(next);
 }
-
 function updateThemeIcon(theme) {
   const btn = $('#themeToggle');
   if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
 // ============================================================================
-// DATA LOADING — JSONP (fixes CORS for file:// protocol)
+// DATA LOADING — JSONP
 // ============================================================================
 function fetchViaJSONP() {
   return new Promise((resolve, reject) => {
     const callbackName = '_gvizCb_' + Date.now();
     const script = document.createElement('script');
-
-    window[callbackName] = function(data) {
-      delete window[callbackName];
-      script.remove();
-      resolve(data);
-    };
-
-    // CRITICAL: responseHandler must be INSIDE the tqx parameter
-    // Format: tqx=responseHandler:callbackName
+    window[callbackName] = function (data) { delete window[callbackName]; script.remove(); resolve(data); };
     script.src = GVIZ_BASE + '&tqx=responseHandler:' + callbackName;
-
-    script.onerror = () => {
-      delete window[callbackName];
-      script.remove();
-      reject(new Error('Script load failed'));
-    };
-
-    setTimeout(() => {
-      if (window[callbackName]) {
-        delete window[callbackName];
-        script.remove();
-        reject(new Error('Timeout'));
-      }
-    }, 15000);
-
+    script.onerror = () => { delete window[callbackName]; script.remove(); reject(new Error('Load failed')); };
+    setTimeout(() => { if (window[callbackName]) { delete window[callbackName]; script.remove(); reject(new Error('Timeout')); } }, 15000);
     document.head.appendChild(script);
   });
 }
@@ -156,38 +128,22 @@ function fetchViaJSONP() {
 function parseGvizResponse(data) {
   const stations = [];
   if (!data || !data.table || !data.table.rows) return stations;
-
   const rows = data.table.rows;
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].c;
     if (!cells || cells.length < 13) continue;
-
     const cv = (idx) => {
       if (!cells[idx]) return '';
-      // gviz returns {v: value, f: formatted}
       if (cells[idx].f) return String(cells[idx].f).trim();
       if (cells[idx].v !== null && cells[idx].v !== undefined) return String(cells[idx].v).trim();
       return '';
     };
-
     const name = cv(1);
     if (!name) continue;
-
     stations.push({
-      row: i + 2,
-      stt: cv(0),
-      name: name,
-      address: cv(2),
-      contact: cv(3),
-      xayLap: cv(4),
-      kva: cv(5),
-      deNghi: cv(6),
-      tntkSoCV: cv(7),
-      tntkNgay: cv(8),
-      ttdn: cv(9),
-      hopDong: cv(10),
-      doDem: cv(11),
-      dongDien: cv(12)
+      row: i + 2, stt: cv(0), name, address: cv(2), contact: cv(3),
+      xayLap: cv(4), kva: cv(5), deNghi: cv(6), tntkSoCV: cv(7),
+      tntkNgay: cv(8), ttdn: cv(9), hopDong: cv(10), doDem: cv(11), dongDien: cv(12)
     });
   }
   return stations;
@@ -195,69 +151,45 @@ function parseGvizResponse(data) {
 
 async function fetchStations() {
   $('#refreshBar').classList.add('loading');
-
-  // Try GAS API first
   if (GAS_URL && !GAS_URL.includes('YOUR_DEPLOYMENT_ID')) {
     try {
       isGASAvailable = true;
       const resp = await fetch(GAS_URL + '?action=get_data&t=' + Date.now());
       const data = await resp.json();
-      if (data.status === 'success' && data.stations) {
-        allStations = data.stations;
-        $('#refreshBar').classList.remove('loading');
-        return;
-      }
-    } catch (e) {
-      console.warn('GAS failed, falling back to JSONP:', e);
-    }
+      if (data.status === 'success' && data.stations) { allStations = data.stations; $('#refreshBar').classList.remove('loading'); return; }
+    } catch (e) { console.warn('GAS failed:', e); }
   }
-
-  // Fallback: JSONP from Google Sheets
   try {
     isGASAvailable = false;
     const data = await fetchViaJSONP();
     allStations = parseGvizResponse(data);
   } catch (e) {
     console.error('JSONP failed:', e);
-    toast('Không thể tải dữ liệu. Kiểm tra kết nối mạng.', 'error');
+    toast('Không thể tải dữ liệu.', 'error');
   }
-
   $('#refreshBar').classList.remove('loading');
 }
 
 // ============================================================================
-// API CALLS (GAS)
+// API
 // ============================================================================
 async function apiUpdate(row, column, value, role) {
-  if (!isGASAvailable) {
-    toast('Chưa deploy API. Vui lòng deploy Google Apps Script.', 'error');
-    return false;
-  }
+  if (!isGASAvailable) { toast('Chưa deploy API. Vui lòng deploy Google Apps Script.', 'error'); return false; }
   try {
-    const r = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'update_date', row, column, value, role })
-    });
+    const r = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'update_date', row, column, value, role }) });
     const d = await r.json();
     if (d.status === 'success') { toast(d.message || 'Cập nhật thành công!', 'success'); return true; }
-    toast(d.message || 'Lỗi', 'error');
-    return false;
-  } catch (e) { toast('Lỗi kết nối: ' + e.message, 'error'); return false; }
+    toast(d.message || 'Lỗi', 'error'); return false;
+  } catch (e) { toast('Lỗi: ' + e.message, 'error'); return false; }
 }
 
 async function apiAddStation(data) {
   if (!isGASAvailable) { toast('Chưa deploy API.', 'error'); return false; }
   try {
-    const r = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'add_station', ...data, role: currentUser.role })
-    });
+    const r = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'add_station', ...data, role: currentUser.role }) });
     const d = await r.json();
     if (d.status === 'success') { toast(d.message || 'Thêm thành công!', 'success'); return true; }
-    toast(d.message || 'Lỗi', 'error');
-    return false;
+    toast(d.message || 'Lỗi', 'error'); return false;
   } catch (e) { toast('Lỗi: ' + e.message, 'error'); return false; }
 }
 
@@ -270,45 +202,86 @@ function handleLogin(e) {
   const p = $('#loginPassword').value.trim();
   if (!u || !p) { $('#loginError').textContent = 'Chọn phòng/đội và nhập mật khẩu'; return; }
   const acc = ACCOUNTS[u];
-  if (!acc || acc.password !== p) { $('#loginError').textContent = 'Sai mật khẩu!'; $('#loginPassword').value=''; return; }
+  if (!acc || acc.password !== p) { $('#loginError').textContent = 'Sai mật khẩu!'; $('#loginPassword').value = ''; return; }
   currentUser = { username: u, role: acc.role, name: acc.name };
   sessionStorage.setItem('tba_user', JSON.stringify(currentUser));
   showApp();
 }
-
 function logout() {
-  currentUser = null;
-  sessionStorage.removeItem('tba_user');
+  currentUser = null; sessionStorage.removeItem('tba_user');
   if (refreshTimer) clearInterval(refreshTimer);
   $('#loginPage').classList.remove('hidden');
   $('#appPage').classList.add('hidden');
-  $('#loginPassword').value='';
-  $('#loginError').textContent='';
+  $('#loginPassword').value = ''; $('#loginError').textContent = '';
 }
-
 function checkSession() {
   const s = sessionStorage.getItem('tba_user');
-  if (s) { try { currentUser = JSON.parse(s); showApp(); } catch(e) { sessionStorage.removeItem('tba_user'); } }
+  if (s) { try { currentUser = JSON.parse(s); showApp(); } catch (e) { sessionStorage.removeItem('tba_user'); } }
 }
-
 async function showApp() {
   $('#loginPage').classList.add('hidden');
   $('#appPage').classList.remove('hidden');
-  const initials = currentUser.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const initials = currentUser.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
   $('#userAvatar').textContent = initials;
   $('#userName').textContent = currentUser.name;
   await loadAndRender();
   if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(loadAndRender, REFRESH_MS);
+  refreshTimer = setInterval(silentRefresh, REFRESH_MS);
 }
 
 async function loadAndRender() {
   await fetchStations();
+  lastDataHash = hashData(allStations);
   render();
 }
 
+// Silent refresh — only re-render if data changed (fix flash)
+async function silentRefresh() {
+  await fetchStations();
+  const newHash = hashData(allStations);
+  if (newHash !== lastDataHash) {
+    lastDataHash = newHash;
+    render();
+  }
+}
+
 // ============================================================================
-// RENDER ROUTER
+// STEP STATES (independent check + default date logic)
+// ============================================================================
+function getStepStates(s) {
+  const vals = STEPS.map(st => s[st.key] || '');
+  const states = vals.map(v => isDate(v) ? 'done' : 'pending');
+  
+  // Nếu bước 2 (TNTK) đã có ngày mà bước 1 (Đề nghị) chưa có → coi bước 1 là done
+  if (states[1] === 'done' && states[0] === 'pending') {
+    states[0] = 'done';
+  }
+  
+  const firstPending = states.indexOf('pending');
+  if (firstPending !== -1) states[firstPending] = 'active';
+  return states;
+}
+
+// Get which step is the current "active" one (first incomplete)
+function getActiveStepIndex(s) {
+  const states = getStepStates(s);
+  const idx = states.indexOf('active');
+  return idx !== -1 ? idx : (states.every(x => x === 'done') ? -1 : 0);
+}
+
+// Get the date to display, including default date logic
+function getStepDate(s, stepIndex) {
+  const val = s[STEPS[stepIndex].key] || '';
+  if (isDate(val)) return { date: val, isDefault: false };
+  // Step 1: if step 2 has date, use default
+  if (stepIndex === 0 && isDate(s.tntkNgay)) {
+    return { date: DEFAULT_DATE, isDefault: true };
+  }
+  return { date: '', isDefault: false };
+}
+
+// ============================================================================
+// RENDER
 // ============================================================================
 function render() {
   const m = $('#mainContent');
@@ -323,59 +296,98 @@ function renderKTAT(el) {
   const total = allStations.length;
   const done = allStations.filter(s => isDate(s.dongDien)).length;
   const notDone = total - done;
+  
+  // Per-step counts
+  const stepCounts = STEPS.map((st, i) => {
+    return allStations.filter(s => {
+      const states = getStepStates(s);
+      return states[i] === 'done';
+    }).length;
+  });
 
-  const filtered = applyFilters(allStations);
-
+  // Incomplete stations (for progress tab)
+  const incomplete = allStations.filter(s => !isDate(s.dongDien));
+  
   el.innerHTML = `
-    <!-- Stats -->
-    <div class="stats-strip" style="grid-template-columns: repeat(3,1fr);">
-      <div class="stat-item"><div class="stat-num total">${total}</div><div class="stat-label">Tổng trạm</div></div>
-      <div class="stat-item"><div class="stat-num done">${done}</div><div class="stat-label">Đã đóng điện</div></div>
-      <div class="stat-item"><div class="stat-num progress">${notDone}</div><div class="stat-label">Chưa đóng điện</div></div>
+    <!-- Stats summary -->
+    <div class="stats-row">
+      <div class="stat-item"><div class="stat-num c-total">${total}</div><div class="stat-label">Tổng trạm</div></div>
+      <div class="stat-item"><div class="stat-num c-done">${done}</div><div class="stat-label">Đã đóng điện</div></div>
+      <div class="stat-item"><div class="stat-num c-notdone">${notDone}</div><div class="stat-label">Chưa đóng điện</div></div>
+    </div>
+    
+    <!-- Per-step stats -->
+    <div class="stats-row-5">
+      ${STEPS.map((st, i) => `
+        <div class="stat-item stat-item-sm">
+          <div class="stat-num" style="color:${i < 4 ? 'var(--info)' : 'var(--success)'}">${stepCounts[i]}</div>
+          <div class="stat-label">${st.short}</div>
+        </div>
+      `).join('')}
     </div>
 
-    <!-- Toolbar -->
+    <!-- Main tabs -->
+    <div class="main-tabs">
+      <button class="main-tab ${mainTab === 'list' ? 'active' : ''}" data-tab="list">
+        Danh sách trạm <span class="tab-count">${total}</span>
+      </button>
+      <button class="main-tab ${mainTab === 'progress' ? 'active' : ''}" data-tab="progress">
+        Tiến độ cập nhật <span class="tab-count">${incomplete.length}</span>
+      </button>
+    </div>
+
+    <div id="tabContent"></div>
+  `;
+
+  // Bind main tabs
+  el.querySelectorAll('.main-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      mainTab = btn.dataset.tab;
+      render();
+    });
+  });
+
+  if (mainTab === 'list') renderStationList(el.querySelector('#tabContent'));
+  else renderProgressTab(el.querySelector('#tabContent'));
+}
+
+// ---- Station List Tab ----
+function renderStationList(container) {
+  const filtered = applyFilters(allStations);
+  container.innerHTML = `
     <div class="toolbar">
       <div class="search-box">
         <span class="search-icon">🔍</span>
         <input type="text" placeholder="Tìm tên, địa chỉ..." id="searchInput" value="${esc(searchQuery)}">
       </div>
       <select class="filter-select" id="filterSelect">
-        <option value="all" ${filterStatus==='all'?'selected':''}>Tất cả</option>
-        <option value="done" ${filterStatus==='done'?'selected':''}>Đã đóng điện</option>
-        <option value="not_done" ${filterStatus==='not_done'?'selected':''}>Chưa đóng điện</option>
+        <option value="all" ${filterStatus === 'all' ? 'selected' : ''}>Tất cả</option>
+        <option value="done" ${filterStatus === 'done' ? 'selected' : ''}>Đã đóng điện</option>
+        <option value="not_done" ${filterStatus === 'not_done' ? 'selected' : ''}>Chưa đóng điện</option>
       </select>
       <button class="btn btn-primary btn-sm" id="addBtn">+ Thêm</button>
     </div>
-
-    <!-- Station list -->
     <div class="section-title">Danh sách trạm <span class="count-pill">${filtered.length}</span></div>
     <div class="station-list" id="stationList">
       ${filtered.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-icon">📭</div>
-          <div class="empty-title">Không có trạm nào</div>
-          <div class="empty-desc">Thay đổi bộ lọc hoặc thêm trạm mới</div>
-        </div>
+        <div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">Không có trạm nào</div></div>
       ` : filtered.map(s => renderStationCard(s)).join('')}
     </div>
   `;
-
-  bindKTATEvents();
+  bindStationListEvents(container);
 }
 
 function renderStationCard(s) {
   const states = getStepStates(s);
   const completedCount = states.filter(x => x === 'done').length;
   const isExpanded = expandedId === s.row;
-  
   let badgeClass, badgeText;
-  if (completedCount === 5) { badgeClass='badge-done'; badgeText='✓ Hoàn thành'; }
-  else if (completedCount > 0) { badgeClass='badge-progress'; badgeText=`${completedCount}/5`; }
-  else { badgeClass='badge-waiting'; badgeText='Chờ'; }
+  if (completedCount === 5) { badgeClass = 'badge-done'; badgeText = '✓ Xong'; }
+  else if (completedCount > 0) { badgeClass = 'badge-progress'; badgeText = `${completedCount}/5`; }
+  else { badgeClass = 'badge-waiting'; badgeText = '0/5'; }
 
   return `
-    <div class="station-card ${isExpanded ? 'expanded' : ''}" data-row="${s.row}">
+    <div class="station-card ${isExpanded ? 'expanded' : ''}" data-row="${s.row}" id="sc-${s.row}">
       <div class="station-card-header" data-row="${s.row}">
         <div class="station-stt">${esc(String(s.stt))}</div>
         <div class="station-info">
@@ -386,37 +398,37 @@ function renderStationCard(s) {
           </div>
         </div>
         <span class="station-progress-badge ${badgeClass}">${badgeText}</span>
-        <span class="expand-icon">${isExpanded ? '▲' : '▼'}</span>
+        <span class="expand-icon">▼</span>
       </div>
       ${isExpanded ? renderTimeline(s, states) : ''}
     </div>
   `;
 }
 
-function renderTimeline(s, states) {
+function renderTimeline(s, states, highlightStepIdx) {
   return `
     <div class="timeline-panel">
       <div class="tree-timeline">
         ${STEPS.map((step, i) => {
           const state = states[i];
-          const val = s[step.key] || '';
-          const dateDisplay = isDate(val) ? val : '';
+          const dateInfo = getStepDate(s, i);
           const canEdit = currentUser.role === 'ktat' && (step.col === 7 || step.col === 9);
+          const isHighlighted = highlightStepIdx !== undefined && i === highlightStepIdx;
 
           return `
-            <div class="tree-node ${state}">
+            <div class="tree-node ${state} ${isHighlighted ? 'highlight-owner' : ''}">
               <div class="tree-dot">${state === 'done' ? '✓' : (i + 1)}</div>
               <div class="tree-content">
                 <div class="tree-label">${step.label}</div>
                 <div class="tree-owner">${step.owner}</div>
-                ${dateDisplay ? `<div class="tree-date">${dateDisplay}</div>` :
-                  (state === 'active' && canEdit) ? `
-                    <div class="tree-date-input">
-                      <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
-                      <button class="btn btn-success btn-sm btn-save-timeline" data-row="${s.row}" data-col="${step.col}">Lưu</button>
-                    </div>
-                  ` : `<div class="tree-date">—</div>`
-                }
+                ${dateInfo.date ? `
+                  <div class="tree-date">${dateInfo.date} ${dateInfo.isDefault ? '<span class="tree-date-note">(ngày mặc định)</span>' : ''}</div>
+                ` : (state === 'active' && canEdit) ? `
+                  <div class="tree-date-input">
+                    <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
+                    <button class="btn btn-success btn-sm btn-save-timeline" data-row="${s.row}" data-col="${step.col}">Lưu</button>
+                  </div>
+                ` : `<div class="tree-date">—</div>`}
               </div>
             </div>
           `;
@@ -424,18 +436,6 @@ function renderTimeline(s, states) {
       </div>
     </div>
   `;
-}
-
-function getStepStates(s) {
-  // Mỗi bước kiểm tra độc lập: có ngày = done, không = chưa cập nhật
-  const vals = STEPS.map(st => s[st.key] || '');
-  const states = vals.map(v => isDate(v) ? 'done' : 'pending');
-  
-  // Tìm bước đầu tiên chưa có ngày để đánh dấu "active" (đang cần cập nhật)
-  const firstPending = states.indexOf('pending');
-  if (firstPending !== -1) states[firstPending] = 'active';
-  
-  return states;
 }
 
 function applyFilters(list) {
@@ -449,34 +449,69 @@ function applyFilters(list) {
   return r;
 }
 
-function bindKTATEvents() {
-  // Search
-  const si = $('#searchInput');
+function bindStationListEvents(container) {
+  const si = container.querySelector('#searchInput');
   if (si) {
-    si.addEventListener('input', () => { searchQuery = si.value; render(); });
-    // Keep focus after re-render
-    setTimeout(() => { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }, 0);
+    si.addEventListener('input', () => { searchQuery = si.value; renderStationList(container); });
+    if (searchQuery) setTimeout(() => { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }, 0);
   }
 
-  // Filter
-  const fs = $('#filterSelect');
-  if (fs) fs.addEventListener('change', () => { filterStatus = fs.value; render(); });
+  const fs = container.querySelector('#filterSelect');
+  if (fs) fs.addEventListener('change', () => { filterStatus = fs.value; renderStationList(container); });
 
-  // Add station
-  const ab = $('#addBtn');
+  const ab = container.querySelector('#addBtn');
   if (ab) ab.addEventListener('click', () => { $('#addStationModal').classList.remove('hidden'); $('#newName').focus(); });
 
-  // Expand/collapse cards
-  $$('.station-card-header').forEach(h => {
+  // Expand/collapse — DOM manipulation instead of full re-render (fix scroll jump)
+  container.querySelectorAll('.station-card-header').forEach(h => {
     h.addEventListener('click', () => {
       const row = parseInt(h.dataset.row);
-      expandedId = expandedId === row ? null : row;
-      render();
+      const card = container.querySelector(`#sc-${row}`);
+      if (!card) return;
+      
+      // Collapse previously expanded
+      if (expandedId && expandedId !== row) {
+        const prev = container.querySelector(`#sc-${expandedId}`);
+        if (prev) {
+          prev.classList.remove('expanded');
+          const oldPanel = prev.querySelector('.timeline-panel');
+          if (oldPanel) oldPanel.remove();
+          const oldIcon = prev.querySelector('.expand-icon');
+          if (oldIcon) oldIcon.textContent = '▼';
+        }
+      }
+
+      if (expandedId === row) {
+        // Collapse current
+        card.classList.remove('expanded');
+        const panel = card.querySelector('.timeline-panel');
+        if (panel) panel.remove();
+        card.querySelector('.expand-icon').textContent = '▼';
+        expandedId = null;
+      } else {
+        // Expand
+        expandedId = row;
+        card.classList.add('expanded');
+        card.querySelector('.expand-icon').textContent = '▲';
+        const s = allStations.find(x => x.row === row);
+        if (s) {
+          const states = getStepStates(s);
+          const html = renderTimeline(s, states);
+          card.insertAdjacentHTML('beforeend', html);
+          bindTimelineSaveButtons(card);
+          // Smooth scroll into view
+          setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+        }
+      }
     });
   });
 
-  // Save timeline date
-  $$('.btn-save-timeline').forEach(btn => {
+  // Bind save buttons on already-expanded cards
+  bindTimelineSaveButtons(container);
+}
+
+function bindTimelineSaveButtons(container) {
+  container.querySelectorAll('.btn-save-timeline').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const row = parseInt(btn.dataset.row);
@@ -486,8 +521,122 @@ function bindKTATEvents() {
       if (!val) { toast('Chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) await loadAndRender();
+      if (ok) { expandedId = row; await loadAndRender(); }
       else { btn.textContent = 'Lưu'; btn.disabled = false; }
+    });
+  });
+}
+
+// ---- Progress Tab (Tiến độ cập nhật) ----
+function renderProgressTab(container) {
+  let incomplete = allStations.filter(s => !isDate(s.dongDien));
+
+  // Apply step filter
+  if (progressFilter !== 'all') {
+    const stepIdx = parseInt(progressFilter);
+    incomplete = incomplete.filter(s => {
+      const states = getStepStates(s);
+      return states[stepIdx] === 'active' || states[stepIdx] === 'pending';
+    });
+  }
+
+  container.innerHTML = `
+    <div class="toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Tìm trạm..." id="progSearch">
+      </div>
+      <select class="filter-select" id="progFilter">
+        <option value="all" ${progressFilter === 'all' ? 'selected' : ''}>Tất cả bước</option>
+        <option value="1" ${progressFilter === '1' ? 'selected' : ''}>B2: Chấp thuận TK</option>
+        <option value="2" ${progressFilter === '2' ? 'selected' : ''}>B3: Ký HĐ</option>
+        <option value="3" ${progressFilter === '3' ? 'selected' : ''}>B4: Đo đếm</option>
+        <option value="4" ${progressFilter === '4' ? 'selected' : ''}>B5: Đóng điện</option>
+      </select>
+    </div>
+    <div class="section-title">Trạm chưa hoàn thành <span class="count-pill">${incomplete.length}</span></div>
+    <div class="progress-grid" id="progressGrid">
+      ${incomplete.length === 0 ? `
+        <div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">Tất cả đã hoàn thành!</div></div>
+      ` : incomplete.map(s => renderProgressCard(s)).join('')}
+    </div>
+  `;
+
+  bindProgressEvents(container);
+}
+
+function renderProgressCard(s) {
+  const states = getStepStates(s);
+  const activeIdx = getActiveStepIndex(s);
+  const activeStep = activeIdx >= 0 ? STEPS[activeIdx] : null;
+  const isExpanded = progExpandedId === s.row;
+
+  return `
+    <div class="progress-card ${isExpanded ? 'prog-expanded' : ''}" data-row="${s.row}" id="pc-${s.row}">
+      <div class="progress-card-top" data-row="${s.row}">
+        <div class="progress-card-name">${esc(s.name)}</div>
+        ${activeStep ? `<div class="progress-card-owner owner-${activeStep.ownerKey}">${activeStep.owner}</div>` : ''}
+      </div>
+      <div class="progress-card-meta">
+        <span>📍 ${esc(s.address || '—')}</span>
+        ${s.kva ? `<span>⚡ ${esc(s.kva)} kVA</span>` : ''}
+      </div>
+      <div class="progress-dots">
+        ${states.map(st => `<div class="progress-dot dot-${st}"></div>`).join('')}
+      </div>
+      ${isExpanded ? renderTimeline(s, states, activeIdx) : ''}
+    </div>
+  `;
+}
+
+function bindProgressEvents(container) {
+  const ps = container.querySelector('#progSearch');
+  if (ps) ps.addEventListener('input', () => {
+    const q = ps.value.toLowerCase();
+    container.querySelectorAll('.progress-card').forEach(c => {
+      const name = c.querySelector('.progress-card-name')?.textContent?.toLowerCase() || '';
+      c.style.display = name.includes(q) ? '' : 'none';
+    });
+  });
+
+  const pf = container.querySelector('#progFilter');
+  if (pf) pf.addEventListener('change', () => { progressFilter = pf.value; renderProgressTab(container); });
+
+  // Click to expand/collapse progress cards — DOM manipulation (no re-render)
+  container.querySelectorAll('.progress-card-top').forEach(top => {
+    top.addEventListener('click', () => {
+      const row = parseInt(top.dataset.row);
+      const card = container.querySelector(`#pc-${row}`);
+      if (!card) return;
+
+      // Collapse previous
+      if (progExpandedId && progExpandedId !== row) {
+        const prev = container.querySelector(`#pc-${progExpandedId}`);
+        if (prev) {
+          prev.classList.remove('prog-expanded');
+          const oldPanel = prev.querySelector('.timeline-panel');
+          if (oldPanel) oldPanel.remove();
+        }
+      }
+
+      if (progExpandedId === row) {
+        card.classList.remove('prog-expanded');
+        const panel = card.querySelector('.timeline-panel');
+        if (panel) panel.remove();
+        progExpandedId = null;
+      } else {
+        progExpandedId = row;
+        card.classList.add('prog-expanded');
+        const s = allStations.find(x => x.row === row);
+        if (s) {
+          const states = getStepStates(s);
+          const activeIdx = getActiveStepIndex(s);
+          const html = renderTimeline(s, states, activeIdx);
+          card.insertAdjacentHTML('beforeend', html);
+          bindTimelineSaveButtons(card);
+          setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+        }
+      }
     });
   });
 }
@@ -502,8 +651,10 @@ function renderTeam(el) {
 
   const pending = [], completed = [];
   for (const s of allStations) {
-    if (isDate(s[prevStep.key])) {
-      if (isDate(s[step.key])) completed.push(s);
+    // Kiểm tra bước trước đã hoàn thành (dùng getStepStates để tính đúng default date)
+    const states = getStepStates(s);
+    if (states[stepIdx - 1] === 'done') {
+      if (states[stepIdx] === 'done') completed.push(s);
       else pending.push(s);
     }
   }
@@ -511,40 +662,31 @@ function renderTeam(el) {
   const showing = currentTab === 'pending' ? pending : completed;
 
   el.innerHTML = `
-    <div class="stats-strip" style="grid-template-columns: repeat(3,1fr);">
-      <div class="stat-item"><div class="stat-num total">${total}</div><div class="stat-label">Tổng công trình</div></div>
-      <div class="stat-item"><div class="stat-num progress">${pending.length}</div><div class="stat-label">Cần xử lý</div></div>
-      <div class="stat-item"><div class="stat-num done">${completed.length}</div><div class="stat-label">Đã hoàn thành</div></div>
+    <div class="stats-row">
+      <div class="stat-item"><div class="stat-num c-total">${total}</div><div class="stat-label">Tổng công trình</div></div>
+      <div class="stat-item"><div class="stat-num c-notdone">${pending.length}</div><div class="stat-label">Cần xử lý</div></div>
+      <div class="stat-item"><div class="stat-num c-done">${completed.length}</div><div class="stat-label">Đã hoàn thành</div></div>
     </div>
 
     <div class="tab-nav">
-      <button class="tab-btn ${currentTab==='pending'?'active':''}" data-tab="pending">
+      <button class="tab-btn ${currentTab === 'pending' ? 'active' : ''}" data-tab="pending">
         Cần xử lý <span class="tab-count">${pending.length}</span>
       </button>
-      <button class="tab-btn ${currentTab==='completed'?'active':''}" data-tab="completed">
+      <button class="tab-btn ${currentTab === 'completed' ? 'active' : ''}" data-tab="completed">
         Hoàn thành <span class="tab-count">${completed.length}</span>
       </button>
     </div>
 
-    <div class="toolbar" style="margin-bottom:10px;">
-      <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input type="text" placeholder="Tìm tên công trình..." id="teamSearch">
-      </div>
-    </div>
+    <div class="toolbar"><div class="search-box"><span class="search-icon">🔍</span><input type="text" placeholder="Tìm tên công trình..." id="teamSearch"></div></div>
 
-    <div class="section-title">${currentTab==='pending' ? '⏳' : '✅'} ${step.label} <span class="count-pill">${showing.length}</span></div>
+    <div class="section-title">${currentTab === 'pending' ? '⏳' : '✅'} ${step.label} <span class="count-pill">${showing.length}</span></div>
 
     <div id="jobList">
       ${showing.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-icon">${currentTab==='pending' ? '🎉' : '📭'}</div>
-          <div class="empty-title">${currentTab==='pending' ? 'Không có job cần xử lý!' : 'Chưa có job hoàn thành'}</div>
-        </div>
-      ` : showing.map(s => renderJobCard(s, step, currentTab==='completed')).join('')}
+        <div class="empty-state"><div class="empty-icon">${currentTab === 'pending' ? '🎉' : '📭'}</div><div class="empty-title">${currentTab === 'pending' ? 'Không có job cần xử lý!' : 'Chưa có job hoàn thành'}</div></div>
+      ` : showing.map(s => renderJobCard(s, step, currentTab === 'completed')).join('')}
     </div>
   `;
-
   bindTeamEvents(step);
 }
 
@@ -554,13 +696,11 @@ function renderJobCard(s, step, isDone) {
     <div class="job-card ${isDone ? 'done-card' : 'pending-card'}">
       <div class="job-title">${esc(s.name)}</div>
       <div class="job-meta">
-        <div class="job-meta-row">📍 ${esc(s.address || 'Chưa có địa chỉ')}</div>
-        <div class="job-meta-row">⚡ ${s.kva ? esc(s.kva)+' kVA' : '—'}</div>
+        <div class="job-meta-row">📍 ${esc(s.address || '—')}</div>
+        <div class="job-meta-row">⚡ ${s.kva ? esc(s.kva) + ' kVA' : '—'}</div>
       </div>
       <div class="job-actions">
-        ${isDone ? `
-          <div class="job-done-badge">✓ ${isDate(dateVal) ? dateVal : 'Hoàn thành'}</div>
-        ` : `
+        ${isDone ? `<div class="job-done-badge">✓ ${isDate(dateVal) ? dateVal : 'Hoàn thành'}</div>` : `
           <input type="date" value="${today()}" data-row="${s.row}" data-col="${step.col}">
           <button class="btn btn-success btn-sm btn-update-job" data-row="${s.row}" data-col="${step.col}">✓ Cập nhật</button>
         `}
@@ -570,13 +710,7 @@ function renderJobCard(s, step, isDone) {
 }
 
 function bindTeamEvents(step) {
-  // Tabs
-  $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
-    currentTab = b.dataset.tab;
-    render();
-  }));
-
-  // Update job
+  $$('.tab-btn').forEach(b => b.addEventListener('click', () => { currentTab = b.dataset.tab; render(); }));
   $$('.btn-update-job').forEach(btn => {
     btn.addEventListener('click', async () => {
       const row = parseInt(btn.dataset.row);
@@ -590,15 +724,10 @@ function bindTeamEvents(step) {
       else { btn.textContent = '✓ Cập nhật'; btn.disabled = false; }
     });
   });
-
-  // Search
   const ts = $('#teamSearch');
   if (ts) ts.addEventListener('input', () => {
     const q = ts.value.toLowerCase();
-    $$('.job-card').forEach(c => {
-      const t = c.querySelector('.job-title')?.textContent?.toLowerCase() || '';
-      c.style.display = t.includes(q) ? '' : 'none';
-    });
+    $$('.job-card').forEach(c => { c.style.display = (c.querySelector('.job-title')?.textContent?.toLowerCase() || '').includes(q) ? '' : 'none'; });
   });
 }
 
@@ -609,16 +738,11 @@ function handleAddStation(e) {
   e.preventDefault();
   const name = $('#newName').value.trim();
   if (!name) { toast('Nhập tên công trình', 'error'); return; }
-
   const data = {
-    name,
-    address: $('#newAddress').value.trim(),
-    kva: $('#newKVA').value.trim(),
-    contact: $('#newContact').value.trim(),
-    xayLap: $('#newXayLap').value.trim(),
+    name, address: $('#newAddress').value.trim(), kva: $('#newKVA').value.trim(),
+    contact: $('#newContact').value.trim(), xayLap: $('#newXayLap').value.trim(),
     deNghi: $('#newDeNghi').value ? inputToSheet($('#newDeNghi').value) : ''
   };
-
   const btn = $('#submitStationBtn');
   btn.disabled = true; btn.textContent = '⏳ Đang thêm...';
   apiAddStation(data).then(ok => {
@@ -632,7 +756,6 @@ function handleAddStation(e) {
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
-
   $('#loginForm').addEventListener('submit', handleLogin);
   $('#logoutBtn').addEventListener('click', logout);
   $('#themeToggle').addEventListener('click', toggleTheme);
@@ -641,6 +764,5 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#addStationForm').addEventListener('submit', handleAddStation);
   $('#addStationModal').addEventListener('click', e => { if (e.target === $('#addStationModal')) $('#addStationModal').classList.add('hidden'); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#addStationModal').classList.add('hidden'); });
-
   checkSession();
 });
