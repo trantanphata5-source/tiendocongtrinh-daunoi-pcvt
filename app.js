@@ -47,6 +47,7 @@ let filterStatus = 'all';
 let progressFilter = 'all';    // progress tab filter
 let progExpandedId = null;
 let lastDataHash = '';
+let lastLocalUpdateTs = 0;  // Timestamp cập nhật local gần nhất — dùng để chặn refresh ghi đè
 
 // ============================================================================
 // UTILS
@@ -271,7 +272,9 @@ async function loadAndRender() {
 }
 
 // Silent refresh — only re-render if data changed (fix flash)
+// Có cooldown 30 giây sau lần cập nhật local để tránh cache cũ ghi đè
 async function silentRefresh() {
+  if (Date.now() - lastLocalUpdateTs < 30000) return; // Bỏ qua nếu vừa cập nhật local
   await fetchStations();
   const newHash = hashData(allStations);
   if (newHash !== lastDataHash) {
@@ -697,8 +700,9 @@ function bindTimelineSaveButtons(container) {
       if (ok) {
         expandedId = row;
         progExpandedId = row;
-        render(); // Render ngay với dữ liệu local đã cập nhật
-        setTimeout(silentRefresh, 4000); // Đồng bộ nền sau 4s
+        lastLocalUpdateTs = Date.now();
+        lastDataHash = hashData(allStations);
+        render();
       } else {
         btn.textContent = 'Lưu'; btn.disabled = false;
       }
@@ -1061,7 +1065,7 @@ function bindTeamEvents(step) {
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '⏳ Đang lưu...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) { render(); setTimeout(silentRefresh, 4000); }
+      if (ok) { lastLocalUpdateTs = Date.now(); lastDataHash = hashData(allStations); render(); }
       else { btn.textContent = '✓ Cập nhật ngày'; btn.disabled = false; }
     });
   });
@@ -1101,7 +1105,7 @@ function bindTeamEvents(step) {
       if (!val) { toast('Vui lòng chọn ngày', 'error'); return; }
       btn.textContent = '...'; btn.disabled = true;
       const ok = await apiUpdate(row, col, val, currentUser.role);
-      if (ok) { render(); setTimeout(silentRefresh, 4000); }
+      if (ok) { lastLocalUpdateTs = Date.now(); lastDataHash = hashData(allStations); render(); }
       else { btn.textContent = 'Lưu'; btn.disabled = false; }
     });
   });
@@ -1155,7 +1159,6 @@ function handleAddStation(e) {
       closeAddStationModal();
       $('#addStationForm').reset();
       render();
-      setTimeout(silentRefresh, 4000);
     }
   });
 }
